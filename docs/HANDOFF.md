@@ -21,6 +21,7 @@ Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），�
 源码：  app/src/main/java/com/jingyuniang/ledger/
 资源：  app/src/main/res/
 工具链：.toolchain/（JDK17 + Gradle + Android SDK，全部本地，勿用系统环境）
+版本控制：git，远端 origin = https://github.com/wumiYYY/deepseek-Tools（分支 main，tag v<版本>）
 ```
 
 **构建**（PowerShell，脚本含 BOM，勿改编码）：

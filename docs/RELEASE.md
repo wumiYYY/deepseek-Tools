@@ -4,16 +4,17 @@
 
 ---
 
-## 0. 为什么不上架
+## 0. 为什么不上架（也不发 APK）
 
 立绘素材来自「深海女仆工坊」皮肤（**CC BY-NC-SA 4.0**）+ 蓝色大肥鱼存档（版权归原作者），
 **仅限个人非商业使用，不可上架分发**。所以：
 
+- ✅ 源码在私有/个人公开仓库里（`wumiYYY/deepseek-Tools`），素材按原授权随项目保留（CC BY-NC-SA 允许非商业分享，需署名 + 相同方式共享，App「关于」页已署名）
 - ✅ 自己设备侧载、私人范围传 APK
 - ❌ Google Play / 小米 / 华为 / OPPO 等任何商店
-- ❌ 公开下载站、公开 GitHub Release
+- ❌ 公开下载站、**GitHub Release 挂 APK**（仓库里也不放 APK：`.gitignore` 已排除 `dist/`、`*.apk`）
 
-要公开分发必须先换掉整套立绘素材并取得授权——那是另一件事，不在本发布流程范围内。
+要公开分发安装包必须先换掉整套立绘素材并取得授权——那是另一件事，不在本发布流程范围内。
 
 ---
 
@@ -38,6 +39,9 @@ val versionNameValue = "1.2.0"        // 主.次.修订；功能=次，修 bug=�
 
 ## 2. 发布流程（4 步）
 
+远端仓库：**https://github.com/wumiYYY/deepseek-Tools**（分支 `main`，tag 走 `v<版本>`）。
+本机已配好 `origin` 和 Git Credential Manager，`git push` 直接可用。
+
 ```powershell
 # 0) 改版本号（app/build.gradle.kts 的 versionNameValue）+ 写 CHANGELOG.md
 
@@ -47,12 +51,14 @@ val versionNameValue = "1.2.0"        // 主.次.修订；功能=次，修 bug=�
 
 # 2) 真机自检（见 §3 清单）
 
-# 3) 留痕
+# 3) 留痕 + 推远端
 git add -A
 git commit -m "release: v1.2.0"
 git tag v1.2.0
+git push origin main --tags
 
-# 4) 分发：把 dist/<版本>/ 里的 APK + SHA256SUMS.txt 丢网盘/局域网
+# 4) 分发：APK 不进仓库（.gitignore 已排除 dist/、*.apk），
+#    把 dist/<版本>/ 里的 APK + SHA256SUMS.txt 单独丢网盘/局域网
 ```
 
 ---

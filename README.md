@@ -1,6 +1,8 @@
-# 🐳 鲸鱼娘金库
+﻿# 🐳 鲸鱼娘金库
 
 > 一个把「自动抓账单」做到底的安卓记账 App。Kotlin + Jetpack Compose，**纯本地存储、无账号、无广告 SDK**。
+>
+> 仓库：https://github.com/wumiYYY/deepseek-Tools ｜ 发布流程：`docs/RELEASE.md` ｜ 交接文档：`docs/HANDOFF.md`
 >
 > ⚠️ **素材授权**：立绘来自「深海女仆工坊」皮肤（CC BY-NC-SA 4.0，链：上善 → ZipZipPipe → Small-tailqwq）+ 蓝色大肥鱼存档（版权归原作者）。
 > **仅限个人非商业使用，不可上架应用商店**。App「关于」页已署名；代码里的图片仅按原授权随项目保留。
