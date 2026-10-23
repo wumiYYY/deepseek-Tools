@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="quick_add_expense"
+        android:shortcutLongLabel="@string/app_name"
+        android:shortcutShortLabel="@string/shortcut_add">
+        <intent
+            android:action="com.jingyuniang.ledger.QUICK_ADD"
+            android:targetClass="com.jingyuniang.ledger.MainActivity"
+            android:targetPackage="com.jingyuniang.ledger" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="voice_add"
+        android:shortcutShortLabel="@string/shortcut_voice">
+        <intent
+            android:action="com.jingyuniang.ledger.QUICK_VOICE"
+            android:targetClass="com.jingyuniang.ledger.MainActivity"
+            android:targetPackage="com.jingyuniang.ledger" />
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WhaleMoney" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/whale_bg_dark</item>
+        <item name="android:statusBarColor">#FF0A1430</item>
+        <item name="android:navigationBarColor">#FF0A1430</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.WhaleMoney.Splash" parent="Theme.WhaleMoney">
+        <item name="android:windowBackground">@drawable/splash_bg_dark</item>
+    </style>
+</resources>

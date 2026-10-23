@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <include
+        domain="database"
+        path="." />
+    <include
+        domain="file"
+        path="receipts/" />
+    <exclude
+        domain="file"
+        path="backups/" />
+</full-backup-content>

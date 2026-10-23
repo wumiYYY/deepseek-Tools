@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">鲸鱼娘金库</string>
+    <string name="notify_listener_label">鲸鱼娘 · 支付通知抓取</string>
+    <string name="access_label">鲸鱼娘 · 支付页面增强</string>
+    <string name="widget_label">鲸鱼娘金库</string>
+    <string name="shortcut_add">记一笔</string>
+    <string name="shortcut_voice">打字记账</string>
+    <string name="access_desc">开启后，鲸鱼娘会在你扫码付款成功的那一刻自动读屏识别金额与商户，作为通知抓取的补充。只读取支付成功页面的文字，不采集账号、密码、聊天内容，可随时关闭。</string>
+</resources>

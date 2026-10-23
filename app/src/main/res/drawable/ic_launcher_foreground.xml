@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标前景：金色蕾丝环 + 奶油圆底 + Q版鲸鱼女仆 + 金库金币 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 金色外环 + 奶油圆底 + 蕾丝金珠 -->
+    <path android:pathData="M54,54 m-33,0 a33,33 0 1,0 66,0 a33,33 0 1,0 -66,0 Z"
+        android:strokeColor="#FFC5A468" android:strokeWidth="1.5" />
+    <path android:pathData="M54,52 m-29.5,0 a29.5,29.5 0 1,0 59,0 a29.5,29.5 0 1,0 -59,0 Z"
+        android:fillColor="#FFFFFCF3" />
+    <path android:fillColor="#FFC5A468" android:pathData="M54,21 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M82.5,37 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M82.5,71 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M54,87 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M25.5,71 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M25.5,37 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z" />
+
+    <!-- 双马尾 -->
+    <path android:fillColor="#FF22305C" android:pathData="M32,42 C19,54 16,74 23,94 C26,80 30,66 36,56 Z" />
+    <path android:fillColor="#FF22305C" android:pathData="M76,42 C89,54 92,74 85,94 C82,80 78,66 72,56 Z" />
+    <!-- 后发 -->
+    <path android:fillColor="#FF22305C" android:pathData="M54,29 C39,29 30,41 30,58 C30,70 32,80 36,92 L72,92 C76,80 78,70 78,58 C78,41 69,29 54,29 Z" />
+    <!-- 脖子 -->
+    <path android:fillColor="#FFF0DCCB" android:pathData="M49,63 L59,63 L59,77 L49,77 Z" />
+    <!-- 水手服 -->
+    <path android:fillColor="#FF1B2A52" android:pathData="M34,94 C36,80 44,74 54,74 C64,74 72,80 74,94 Z" />
+    <path android:fillColor="#FFFFFDF8" android:pathData="M44,75 L54,87 L64,75 L60,73 L54,80 L48,73 Z" />
+    <!-- 脸 -->
+    <path android:fillColor="#FFFFF3E3" android:pathData="M54,54 m-15,0 a15,14.5 0 1,0 30,0 a15,14.5 0 1,0 -30,0 Z" />
+    <!-- 刘海 -->
+    <path android:fillColor="#FF22305C" android:pathData="M38,53 C39,41 45,34 54,34 C63,34 69,41 70,53 C67,46 61,42 54,42 C47,42 41,46 38,53 Z" />
+    <path android:fillColor="#FF22305C" android:pathData="M49.5,34 L54,44 L58.5,34 Z" />
+    <!-- 女仆蕾丝头带 -->
+    <path android:fillColor="#FFFFFDF8" android:pathData="M36,46 C40,33 47,28.5 54,28.5 C61,28.5 68,33 72,46 C72,47.6 70.4,47.8 69.4,46.2 C65,36.6 60,33.5 54,33.5 C48,33.5 43,36.6 38.6,46.2 C37.6,47.8 36,47.6 36,46 Z" />
+    <path android:strokeColor="#FFC5A468" android:strokeWidth="0.9" android:strokeLineCap="round"
+        android:pathData="M37.4,45.6 C41.6,35.2 47.6,32 54,32 C60.4,32 66.4,35.2 70.6,45.6" />
+    <path android:fillColor="#FFC5A468" android:pathData="M44,40.6 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M54,37.6 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0 Z" />
+    <path android:fillColor="#FFC5A468" android:pathData="M64,40.6 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0 Z" />
+    <path android:fillColor="#FFE1BF7C" android:pathData="M71,36.6 L67,33.4 L67,39.8 Z" />
+    <path android:fillColor="#FFE1BF7C" android:pathData="M71,36.6 L75,33.4 L75,39.8 Z" />
+    <path android:fillColor="#FFB98F3C" android:pathData="M71,36.6 m-1.7,0 a1.7,1.7 0 1,0 3.4,0 a1.7,1.7 0 1,0 -3.4,0 Z" />
+    <!-- 鲸鱼尾发饰 -->
+    <path android:fillColor="#FF22305C" android:strokeColor="#FFC5A468" android:strokeWidth="0.8"
+        android:pathData="M31,44 C28.5,40.5 24.5,40 23,42.4 C25.4,42.7 26.8,44.2 27.2,46.4 C28.4,45.6 29.6,44.8 31,44 Z" />
+
+    <!-- 眼睛 -->
+    <path android:fillColor="#FF22305C" android:pathData="M46,56.4 m-4.2,0 a4.2,5.4 0 1,0 8.4,0 a4.2,5.4 0 1,0 -8.4,0 Z" />
+    <path android:fillColor="#FF4A67B8" android:pathData="M46,57.6 m-2.9,0 a2.9,3.5 0 1,0 5.8,0 a2.9,3.5 0 1,0 -5.8,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M47.4,54.3 m-1.6,0 a1.6,1.9 0 1,0 3.2,0 a1.6,1.9 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M44.5,58.6 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0 Z" />
+    <path android:fillColor="#FF22305C" android:pathData="M62,56.4 m-4.2,0 a4.2,5.4 0 1,0 8.4,0 a4.2,5.4 0 1,0 -8.4,0 Z" />
+    <path android:fillColor="#FF4A67B8" android:pathData="M62,57.6 m-2.9,0 a2.9,3.5 0 1,0 5.8,0 a2.9,3.5 0 1,0 -5.8,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M63.4,54.3 m-1.6,0 a1.6,1.9 0 1,0 3.2,0 a1.6,1.9 0 1,0 -3.2,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M60.5,58.6 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0 Z" />
+    <path android:strokeColor="#FF22305C" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M41.2,52.6 C43,50.4 46.2,49.8 48.8,51" />
+    <path android:strokeColor="#FF22305C" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M59.2,51 C61.8,49.8 65,50.4 66.8,52.6" />
+    <path android:strokeColor="#FF2B3D72" android:strokeWidth="1.1" android:strokeLineCap="round"
+        android:pathData="M42,47.4 C44,46.2 47,46 49,47" />
+    <path android:strokeColor="#FF2B3D72" android:strokeWidth="1.1" android:strokeLineCap="round"
+        android:pathData="M59,47 C61,46 64,46.2 66,47.4" />
+    <path android:fillColor="#8CFFAFC5" android:pathData="M41.4,62.6 m-3,0 a3,2 0 1,0 6,0 a3,2 0 1,0 -6,0 Z" />
+    <path android:fillColor="#8CFFAFC5" android:pathData="M66.6,62.6 m-3,0 a3,2 0 1,0 6,0 a3,2 0 1,0 -6,0 Z" />
+    <path android:strokeColor="#FFB07A5A" android:strokeWidth="1.4" android:strokeLineCap="round"
+        android:pathData="M52,63.4 C53.2,64.9 54.8,64.9 56,63.4" />
+
+    <!-- 金库金币（右下，压在环上） -->
+    <path android:fillColor="#FFE1BF7C" android:pathData="M76,78 m-10.5,0 a10.5,10.5 0 1,0 21,0 a10.5,10.5 0 1,0 -21,0 Z" />
+    <path android:fillColor="#FFF6E3BC" android:pathData="M76,78 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z" />
+    <path android:pathData="M76,78 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z"
+        android:strokeColor="#FFB98F3C" android:strokeWidth="0.9" />
+    <path android:fillColor="#FF7A5A1E" android:pathData="M76,75 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0 Z" />
+    <path android:fillColor="#FF7A5A1E" android:pathData="M75.1,77.4 L76.9,77.4 L78.1,82 L73.9,82 Z" />
+</vector>

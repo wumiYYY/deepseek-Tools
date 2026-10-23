@@ -1,0 +1,31 @@
+* 鲸鱼娘记账管家 构建产物忽略
+
+# 工具链 / 构建产物
+.toolchain/
+.gradle/
+.kotlin/
+build/
+app/build/
+captures/
+*.hprof
+
+# 本机配置（含 SDK 路径与签名口令，绝不提交）
+local.properties
+*.iml
+.idea/
+
+# 签名私钥：丢了就再也无法覆盖升级，只留本机 + 离线备份
+keystore/
+*.jks
+*.keystore
+*.p12
+
+# 发布产物（APK 走 dist/ 分发，不进仓库）
+dist/
+*.apk
+*.aab
+*.apks
+
+# 调试残留
+*.log
+ui.xml

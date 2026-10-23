@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path
+        name="receipts"
+        path="receipts/" />
+    <files-path
+        name="backups"
+        path="backups/" />
+    <files-path
+        name="exports"
+        path="exports/" />
+    <cache-path
+        name="cache"
+        path="." />
+    <external-files-path
+        name="ext_receipts"
+        path="receipts/" />
+</paths>
