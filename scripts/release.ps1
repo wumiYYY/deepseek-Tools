@@ -51,8 +51,35 @@ function Sync-DistGuide {
     Write-Output "  使用说明.md / 使用说明.txt 已更新"
 }
 
+# ---- 2.5 打个 zip：微信/QQ 不能直接发 .apk，发这个 zip 最省事 ----
+function Sync-DistZip {
+    $zipPath = Join-Path $distDir "鲸鱼娘金库-v$versionName-发布包.zip"
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    $apk = Join-Path $distDir "鲸鱼娘金库-v$versionName.apk"
+    if (-not (Test-Path $apk)) {
+        Write-Output "  （没有 APK，跳过 zip 打包）"
+        return
+    }
+    $names = @("鲸鱼娘金库-v$versionName.apk", "SHA256SUMS.txt", "VERSION.txt", "使用说明.txt", "使用说明.md")
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')
+    try {
+        foreach ($n in $names) {
+            $p = Join-Path $distDir $n
+            if (Test-Path $p) {
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $p, $n, 'Optimal') | Out-Null
+            }
+        }
+    } finally {
+        $zip.Dispose()
+    }
+    $mb = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+    Write-Output "  发布包 zip 已生成（${mb}MB，微信可直接发）"
+}
+
 if ($GuideOnly) {
     Sync-DistGuide
+    Sync-DistZip
     Write-Output "（-GuideOnly：没有重新构建，APK 与 SHA256SUMS 保持不变）"
     exit 0
 }
@@ -96,6 +123,7 @@ $sizeMB = [math]::Round((Get-Item $apkOut).Length / 1MB, 2)
 "$hash  $apkName" | Set-Content -Path (Join-Path $distDir "SHA256SUMS.txt") -Encoding UTF8
 "v$versionName ($versionCode)  $apkName  ${sizeMB}MB  $hash" | Set-Content -Path (Join-Path $distDir "VERSION.txt") -Encoding UTF8
 Sync-DistGuide
+Sync-DistZip
 
 Write-Output ""
 Write-Output "=== 产物 ==="
