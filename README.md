@@ -1,4 +1,4 @@
-﻿# 🐳 鲸鱼娘金库
+# 🐳 鲸鱼娘金库
 
 > 一个把「自动抓账单」做到底的安卓记账 App。Kotlin + Jetpack Compose，**纯本地存储、无账号、无广告 SDK**。
 >
@@ -66,10 +66,12 @@
 ```powershell
 # 方式一：自己打（首次需先跑 .\scripts\setup-toolchain.ps1 准备工具链）
 .\scripts\release.ps1
-# → dist\1.2.0\鲸鱼娘金库-v1.2.0.apk（约 24.5 MB）+ SHA256SUMS.txt
+# → dist\1.2.0\ 下产出：鲸鱼娘金库-v1.2.0.apk（约 24.5 MB）+ SHA256SUMS.txt + 使用说明.txt/.md
 ```
 
-方式二：向发布者索取 `dist/<版本>/鲸鱼娘金库-v<版本>.apk` 与对应的 `SHA256SUMS.txt`（自己校验 sha256 再装）。
+方式二：向发布者索取 `dist/<版本>/` **整个目录**——里面三样东西要一起发：APK、`SHA256SUMS.txt`（校验用）、`使用说明.txt`（给使用者看）。
+
+👉 **使用者请看 [docs/用户指引.md](docs/用户指引.md)**（= 随包的「使用说明」）：能装的前提、怎么开权限、30 秒自检、常见问题、换机备份。
 
 安装步骤：
 

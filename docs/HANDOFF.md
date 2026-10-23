@@ -8,7 +8,8 @@
 
 Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），核心是**自动记账**（通知/短信抓取 + AI 一句话记账），UI 是二次元深蓝+鎏金女仆风。
 **当前版本 v1.2.0（versionCode 10200）**，产物 `dist/1.2.0/鲸鱼娘金库-v1.2.0.apk`（24.5 MB，只含 arm64-v8a），手机已装机。
-发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`。
+发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`，**给使用者的说明书是 `docs/用户指引.md`**（`release.ps1` 会自动把它放进 `dist/<版本>/`）。
+代码已入 git 并推到 `https://github.com/wumiYYY/deepseek-Tools`（`main` + tag `v1.2.0`）。
 本轮修完：**P0-3 AI 记账真写库 ✅**、**更新余额面板第 1 刀（手动输入）✅**、**第 2 刀（截图 OCR + 认账户）✅**；
 另做过一轮「数据安全 + 回归」：加密备份/恢复、抓取流水线、离线一句话记账都真机验过（见 §3）。只剩第 3 刀（无障碍读屏）。
 
@@ -125,6 +126,8 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 | **抓取流水线回归（本轮改过 ParseEngine/findSimilar）** | `capture:0` 微信 ¥25 → 2500/置信度68→待确认；`capture:1` 银行短信 → 4800/65→待确认；`capture:2` 支付宝 → 1250/88→自动入账 txn#27（acc=支付宝、cat=23） |
 | **中文口语金额** | `十块钱 / 二十五块 / 一百五十元 / 十二块五` 全走单测 + 真机 `AI book amount=1000` |
 | 49 个单元测试（8 BillImporter + 14 CaptureFilters + 16 ParseEngine + 11 BalanceParser） | `testDebugUnitTest` 全绿 0 失败 |
+| **全新安装（模拟发给使用者）的第一次体验** | 装了 debug 变体（`com.jingyuniang.vault.debug`，独立包名，不碰正式包数据）：首装引导 3 页 → 点「去开启权限」直接落到权限向导（4 项 + 无障碍可选 + 5 家厂商自启动路径）；首次种子数据正确（`accounts=1:现金, 2:微信*, 3:支付宝, 4:银行卡, 5:信用卡`，0 笔流水）。截图：`docs/v_guide_onboarding2/3.png`、`docs/v_guide_permission.png` |
+| **随包使用说明** | `docs/用户指引.md` 由 `release.ps1` 自动落到 `dist/<版本>/使用说明.txt(.md)`（txt 带 BOM）；`release.ps1 -GuideOnly` 可只更新说明、不动 APK 的 sha256 |
 
 ---
 
@@ -192,6 +195,9 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 23. **README 里曾把 keystore 口令写成明文**（口令原文，别再写回来）。仓库要公开/共享时，口令必须只在 `local.properties`（已 ignore）或环境变量里；提交前跑一遍
     `git grep -n -E "whale(money)?[0-9]{4,}|sk-[A-Za-z0-9]{10,}|ghp_"` 自查（连口令片段都别留）。
 24. **PowerShell 函数里不能用管道输出日志**：`$out | Select-String ... | ForEach-Object { $_.Line }` 的输出会混进函数返回值，导致 `if ((Invoke-Gradle ...) -ne 0)` 恒真。日志一律 `Write-Host`。
+25. **MIUI/HyperOS 用 adb 装「新包名」会被拦**：给 debug 变体（`.debug` 后缀）或别的包名装包时，系统会弹 `com.miui.securitycenter / USB安装管理` 并报 `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`；同包名覆盖升级不受影响。
+    解决：手机上手动点安装，或先在开发者选项里开启「USB 安装」（需登录小米账号）。**发给使用者时提醒他们自己点安装**，不要指望远程 adb。
+    另一个现象：屏幕熄灭时 adb 安装也可能被取消，装之前先 `adb shell input keyevent KEYCODE_WAKEUP`。
 
 ---
 

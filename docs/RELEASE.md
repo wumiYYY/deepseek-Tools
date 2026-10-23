@@ -1,4 +1,4 @@
-﻿# 鲸鱼娘金库 · 发布与版本更新
+# 鲸鱼娘金库 · 发布与版本更新
 
 > 一句话：**侧载发布，不上应用商店**。每次发版跑 `.\scripts\release.ps1`，产物进 `dist/<版本>/`，打 git tag。
 
@@ -95,17 +95,25 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 
 ### 4.1 轻量（当前采用）
 
-网盘/局域网目录放：
+网盘/局域网目录放**整个 `dist/<版本>/`**（该目录由 `release.ps1` 自动生成）：
 
 ```
-whale-vault/
+whale-vault/1.2.0/
 ├── 鲸鱼娘金库-v1.2.0.apk
-├── SHA256SUMS.txt
-└── VERSION.txt          # 一行：1.2.0 (10200)
+├── SHA256SUMS.txt        # 校验用
+├── VERSION.txt           # 一行：1.2.0 (10200) <sha256>
+├── 使用说明.txt          # 给使用者看（纯文本，带 BOM，微信/记事本直接可读）
+└── 使用说明.md           # 同一份，Markdown 版（源文件是 docs/用户指引.md）
 ```
+
+**发给使用者时这三样一起发：APK + SHA256SUMS.txt + 使用说明**。少了说明，对方大概率卡在「通知使用权」上，然后反馈「什么都没抓到」。
 
 安装：手机浏览器打开链接下载 → 允许「安装未知应用」→ 覆盖安装。
 **装完提醒自己**：`setup-phone.ps1` 重授权（或进 App「权限向导」逐项点一遍）。
+
+> ⚠️ **sha256 跨构建不可复现**：同样的源码重新 `assembleRelease`，zip 时间戳会让 hash 变一次。
+> 校验只对照**当次 `dist/<版本>/SHA256SUMS.txt`**，别拿上一次构建的 hash 去比对。
+> 只改文档、不想动 APK/hash 时用 `.\scripts\release.ps1 -GuideOnly`（只重新生成使用说明）。
 
 ### 4.2 将来加「检查更新」（预留格式，尚未实现）
 

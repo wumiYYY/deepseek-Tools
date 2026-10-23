@@ -1,13 +1,15 @@
 ﻿param(
     [switch]$SkipTests,
+    [switch]$GuideOnly,
     [switch]$Install,
     [string]$Serial = "bd7a85e9"
 )
-# 鲸鱼娘金库 · 发布一条龙：单测 → 构建 → dist/<版本>/APK + SHA256 →（可选）装机
+# 鲸鱼娘金库 · 发布一条龙：单测 → 构建 → dist/<版本>/APK + SHA256 + 使用说明 →（可选）装机
 # 用法：
-#   .\scripts\release.ps1
-#   .\scripts\release.ps1 -SkipTests
+#   .\scripts\release.ps1                      # 完整发布
+#   .\scripts\release.ps1 -SkipTests           # 跳过单测
 #   .\scripts\release.ps1 -Install -Serial bd7a85e9
+#   .\scripts\release.ps1 -GuideOnly           # 只重新生成 dist 里的「使用说明」，不重打包（sha 不变）
 $ErrorActionPreference = "Continue"
 $root = "D:\Tools\deepseek_build_Tools\everyday_money"
 Set-Location $root
@@ -16,15 +18,46 @@ Set-Location $root
 $gradleFile = Join-Path $root "app\build.gradle.kts"
 $m = Select-String -Path $gradleFile -Pattern 'val\s+versionNameValue\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"' -Encoding UTF8
 if (-not $m) {
-    Write-Output "❌ 没在 app/build.gradle.kts 里找到 versionNameValue = \"x.y.z\""
+    Write-Output "❌ 没在 app/build.gradle.kts 里找到 versionNameValue"
     exit 1
 }
 $versionName = $m.Matches[0].Groups[1].Value
 $parts = $versionName.Split(".")
 $versionCode = [int]$parts[0] * 10000 + [int]$parts[1] * 100 + [int]$parts[2]
 Write-Output "=== 版本：v$versionName (versionCode=$versionCode) ==="
+$distDir = Join-Path $root "dist\$versionName"
 
-# ---- 2. 单测 ----
+# ---- 2. 生成「给使用者看」的说明（.md 原样 + .txt 纯文本，带 BOM 防记事本乱码）----
+function Sync-DistGuide {
+    $guideSrc = Join-Path $root "docs\用户指引.md"
+    if (-not (Test-Path $guideSrc)) {
+        Write-Output "⚠ 没找到 docs\用户指引.md，跳过使用说明"
+        return
+    }
+    New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+    Copy-Item $guideSrc (Join-Path $distDir "使用说明.md") -Force
+
+    $md = Get-Content $guideSrc -Raw -Encoding UTF8
+    $txt = $md -replace '(?m)^!\[[^\]]*\]\([^)]*\)\s*$', ''
+    $txt = $txt -replace '(?m)^#{1,3}\s+(.+?)\s*$', '【$1】'
+    $txt = $txt -replace '\*\*(.+?)\*\*', '$1'
+    $txt = $txt -replace '\[([^\]]+)\]\([^)]+\)', '$1'
+    $txt = "鲸鱼娘金库 v$versionName · 安装与使用说明" + "`r`n`r`n" + $txt.Trim()
+    [System.IO.File]::WriteAllText(
+        (Join-Path $distDir "使用说明.txt"),
+        $txt,
+        (New-Object System.Text.UTF8Encoding($true))
+    )
+    Write-Output "  使用说明.md / 使用说明.txt 已更新"
+}
+
+if ($GuideOnly) {
+    Sync-DistGuide
+    Write-Output "（-GuideOnly：没有重新构建，APK 与 SHA256SUMS 保持不变）"
+    exit 0
+}
+
+# ---- 3. 单测 / 构建 ----
 function Invoke-Gradle([string]$task) {
     $out = & (Join-Path $root "scripts\build.ps1") -Task $task 2>&1
     # 注意：日志必须走 Write-Host（信息流），不能写成管道输出，否则会被当成函数返回值
@@ -41,7 +74,6 @@ if (-not $SkipTests) {
     }
 }
 
-# ---- 3. 构建 release ----
 Write-Output "=== 构建 release ==="
 if ((Invoke-Gradle "assembleRelease") -ne 0) {
     Write-Output "❌ 构建失败"
@@ -54,7 +86,6 @@ if (-not (Test-Path $src)) {
     Write-Output "❌ 没找到 $src"
     exit 1
 }
-$distDir = Join-Path $root "dist\$versionName"
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $apkName = "鲸鱼娘金库-v$versionName.apk"
 $apkOut = Join-Path $distDir $apkName
@@ -64,6 +95,7 @@ $hash = (Get-FileHash $apkOut -Algorithm SHA256).Hash.ToLower()
 $sizeMB = [math]::Round((Get-Item $apkOut).Length / 1MB, 2)
 "$hash  $apkName" | Set-Content -Path (Join-Path $distDir "SHA256SUMS.txt") -Encoding UTF8
 "v$versionName ($versionCode)  $apkName  ${sizeMB}MB  $hash" | Set-Content -Path (Join-Path $distDir "VERSION.txt") -Encoding UTF8
+Sync-DistGuide
 
 Write-Output ""
 Write-Output "=== 产物 ==="
@@ -79,6 +111,6 @@ if ($Install) {
 
 Write-Output ""
 Write-Output "下一步："
-Write-Output "  1) 真机自检（docs/RELEASE.md §3 的 diag 清单）"
-Write-Output "  2) git add -A && git commit -m `"release: v$versionName`" && git tag v$versionName"
-Write-Output "  3) 把 dist\$versionName\ 整个目录丢网盘/局域网"
+Write-Output "  1) 真机自检（docs/RELEASE.md 第 3 节 diag 清单）"
+Write-Output "  2) git add -A; git commit -m `"release: v$versionName`"; git tag v$versionName; git push origin main --tags"
+Write-Output "  3) 把 dist\$versionName\ 整个目录（APK + SHA256SUMS + 使用说明）发给使用者"
