@@ -1,4 +1,4 @@
-# 鲸鱼娘金库 · 发布与版本更新
+﻿# 鲸鱼娘金库 · 发布与版本更新
 
 > 一句话：**侧载发布，不上应用商店**。每次发版跑 `.\scripts\release.ps1`，产物进 `dist/<版本>/`，打 git tag。
 
@@ -155,8 +155,9 @@ whale-vault/
 ## 7. 回滚
 
 ```powershell
-git log --oneline            # 找到上一版
-git checkout v1.1.0 -- app   # 或 git revert <commit>
+git log --oneline            # 找到上一版（tag 形如 v1.2.0；首个 tag 就是 v1.2.0）
+git revert <commit>          # 或 git checkout <tag> -- app
+# 然后**把版本号再往上提**（例如 1.2.1）重新打包，不要降 versionCode
 .\scripts\release.ps1
 ```
 
