@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.capture
+﻿package com.jingyuniang.ledger.capture
 
 import com.jingyuniang.ledger.data.Account
 import com.jingyuniang.ledger.data.AccountType
@@ -34,7 +34,11 @@ object ParseEngine {
     /** 垃圾消息关键词：命中直接丢弃 */
     private val JUNK = listOf(
         "验证码", "登录", "注册", "密码", "抽奖", "优惠券到账", "红包封面", "确认收货",
-        "发货", "物流", "快递已签收", "为你推荐", "活动", "恭喜获得", "恭喜您", "中奖", "券", "劵", "立减", "满减", "优惠", "领取", "抽奖", "权益", "提额", "积分", "广告",
+        "发货", "物流", "快递已签收", "为你推荐", "活动", "恭喜获得", "恭喜您", "中奖", // 注意：
+        // · 「领取」不能放这里 —— 「[转账] 领取了你的红包」会被误杀（真机/矩阵测试抓到）。
+        //   它在 AD_MARKERS 里还有，营销推送照样被广告门拦。
+        // · JUNK 是「一眼假」的绝对垃圾，判定必须保守，否则真实交易会被吞。
+        "券", "劵", "立减", "满减", "优惠", "抽奖", "权益", "提额", "积分", "广告",
         "账单已出", "还款提醒", "到期提醒", "即将到期", "额度提升", "邀请", "关注",
         "更新", "版本", "清理", "内存", "安全提醒", "异地登录", "失败", "未支付", "待支付",
         "取消订单", "退款申请", "审核中", "处理中"
@@ -163,7 +167,10 @@ object ParseEngine {
     fun isJunk(text: String): Boolean = JUNK.any { text.contains(it) }
 
     // ---------- 金额 ----------
-    private val AMOUNT_REGEX = Regex("""(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?""")
+    // ⚠️ 注意 `(?:,\d{3})+` 是「+」不是「*」：
+    // 如果写成 `*`，正则引擎会先用 `\d{1,3}` 贪婪吃掉前 3 位（"1000.00" → "100"），
+    // 于是 1000 元被解析成 100 元（真机矩阵测试抓到的 bug）。
+    private val AMOUNT_REGEX = Regex("""(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?""")
 
     /** 金额前面的「付费动词」：命中说明这个数字是这笔交易的主角 */
     private val STRONG_BEFORE = listOf(
@@ -247,6 +254,15 @@ object ParseEngine {
 
     // ---------- 方向 ----------
     fun detectDirection(text: String): TxnType {
+        // 强信号优先：渠道名里的「支付」（如"微信支付收款到账"）不该把收入判成支出
+        val incStrong = listOf(
+            "收款到账", "到账", "收到", "入账", "退款", "工资", "报销", "转入", "存入", "收益", "返现"
+        ).count { text.contains(it) }
+        val expStrong = listOf(
+            "支付成功", "已支付", "付款成功", "已付款", "付款", "消费", "扣款", "支出", "缴费", "转出", "提现"
+        ).count { text.contains(it) }
+        if (incStrong > 0 && expStrong == 0) return TxnType.INCOME
+        if (expStrong > 0 && incStrong == 0) return TxnType.EXPENSE
         val inc = INCOME_WORDS.count { text.contains(it) }
         val exp = EXPENSE_WORDS.count { text.contains(it) }
         return when {
@@ -368,6 +384,19 @@ object ParseEngine {
         val tail = m.groupValues[2]
         if (tail.isNotEmpty()) cents += (CN_NUM[tail[0]] ?: 0) * 10L
         return cents
+    }
+
+    /** 规则表只读视图，只给测试/文档用（遍历覆盖） */
+    internal object Tables {
+        val junk: List<String> get() = JUNK
+        val specUnits: List<String> get() = SPEC_UNIT_AFTER
+        val incomeWords: List<String> get() = INCOME_WORDS
+        val expenseWords: List<String> get() = EXPENSE_WORDS
+        val strongPay: List<String> get() = STRONG_PAY
+        val negBefore: List<String> get() = NEG_BEFORE
+        val strongBefore: List<String> get() = STRONG_BEFORE
+        val negAfter: List<String> get() = NEG_AFTER
+        val payCtx: List<String> get() = PAY_CTX
     }
 
     /** 「二十五」→25，「一百五十」→150，「一千零五」→1005 */

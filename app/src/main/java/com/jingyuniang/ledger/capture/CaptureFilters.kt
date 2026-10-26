@@ -161,7 +161,9 @@ object CaptureFilters {
         // 注意：还款**不在这里** —— 还款是「资金转移」（储蓄卡 → 信用卡），要记成 TRANSFER 而不是丢掉，
         // 见 REPAYMENT_MARKERS / isRepayment()
         // 注意：只排除「把已有消费重新分期」的，不排除「分期付款成功」——那可能是真的一笔支付
-        "账单分期", "分期成功", "转为分期", "已分期"
+        "账单分期", "分期成功", "转为分期", "已分期",
+        // 贷款/授信类营销（带金额，但不是动账）
+        "贷款", "综合贷款", "可办理", "授信", "预审批", "免息期"
     )
 
     /**
@@ -179,8 +181,19 @@ object CaptureFilters {
         "还款金额", "本期还款", "账单还款"
     )
 
+    /**
+     * 资金转移类（不计收支）：信用卡还款、零钱提现到卡、转账到银行卡。
+     * 这些「钱只是从自己一个口袋挪到另一个口袋」，记成支出会虚增、记成收入会虚增收入。
+     */
+    private val FUND_TRANSFER_MARKERS = REPAYMENT_MARKERS + listOf(
+        "零钱提现", "提现到银行卡", "提现到卡", "向银行卡转账", "转到银行卡", "转存"
+    )
+
     /** 是不是信用卡还款（资金转移，不是消费） */
     fun isRepayment(text: String): Boolean = REPAYMENT_MARKERS.any { text.contains(it) }
+
+    /** 是不是资金转移（还款 / 提现到卡 / 转存）——应记成 TRANSFER */
+    fun isFundTransfer(text: String): Boolean = FUND_TRANSFER_MARKERS.any { text.contains(it) }
 
     /** 真正的动账证据：有这些词才可能是账单，没有就是广告 */
     private val PAY_EVIDENCE = listOf(
@@ -194,7 +207,7 @@ object CaptureFilters {
      */
     private val STRICT_PAY_TEMPLATE = listOf(
         "支付成功", "付款成功", "支付完成", "付款完成", "交易成功", "交易已完成",
-        "已支付", "已付款", "扣款成功", "订单支付成功", "退款到账", "已退款", "收款到账",
+        "已支付", "已付款", "已扣费", "扣费成功", "已扣款", "扣款成功", "订单支付成功", "退款到账", "已退款", "收款到账",
         "付款给", "你已成功付款"
     )
 
@@ -203,7 +216,7 @@ object CaptureFilters {
      * 至少要有其中一项，否则金额再大也只当可疑（进待确认，不自动入账）。
      */
     private val TXN_EVIDENCE = listOf(
-        "尾号", "账户", "卡号", "交易单号", "流水号", "订单号", "商户", "收款方", "付款方", "商家",
+        "尾号", "账户", "卡号", "交易单号", "流水号", "订单号", "商户", "收款方", "付款方", "商家", "实付", "订单",
         "交易时间", "可用额度", "账户余额", "当前余额", "余额为", "余额为人民币", "余额",
         "实时", "已入账", "已到账"
     )
@@ -325,13 +338,20 @@ object CaptureFilters {
         val transferCard = isChatApp(pkg) && TRANSFER_MARKERS.any { text.contains(it) }
         if (!hasMoney && !transferCard) return false
 
+        // 【聊天里的钱卡片】必须排在广告门之前：
+        // 「[转账] 领取了你的红包」里的「领取」是广告词表里的词，但这条是真红包
+        if (isChatApp(pkg) && TRANSFER_MARKERS.any { text.contains(it) } &&
+            !BANK_TEXT_MARKERS.any { text.contains(it) }
+        ) return true
+
         // 【广告闸门】营销词 + 无动账证据 → 丢掉
         val adLike = AD_MARKERS.any { text.contains(it) || title.contains(it) }
         val payEvidence = PAY_EVIDENCE.any { text.contains(it) }
         if (adLike && !payEvidence) return false
 
-        // 【还款】放行，由 pipeline 记成 TRANSFER（资金转移，不计收支）
-        if (isRepayment(text)) return hasMoney
+        // 【资金转移】放行，由 pipeline 记成 TRANSFER（不计收支）
+        if (isFundTransfer(text)) return hasMoney
+
 
         // 【非动账模板】账单提醒 / 额度调整 / 营销：即使带「消费」「还款」也不记账
         if (isNonTxnNotice(text)) return false
@@ -368,6 +388,28 @@ object CaptureFilters {
         }
 
         return hasMoney && STRONG_HINTS.any { text.contains(it) }
+    }
+
+    /**
+     * 规则表只读视图 —— **只给测试和文档用**。
+     * 测试会遍历这里的每一条并断言其行为，所以删/改任何一条规则都会立刻让测试失败（防止悄悄放松规则）。
+     */
+    internal object Tables {
+        val adMarkers: List<String> get() = AD_MARKERS
+        val nonTxnMarkers: List<String> get() = NON_TXN_MARKERS
+        val repaymentMarkers: List<String> get() = REPAYMENT_MARKERS
+        val fundTransferMarkers: List<String> get() = FUND_TRANSFER_MARKERS
+        val strongPayTemplate: List<String> get() = STRICT_PAY_TEMPLATE
+        val txnEvidence: List<String> get() = TXN_EVIDENCE
+        val payEvidence: List<String> get() = PAY_EVIDENCE
+        val paySourceMarkers: List<String> get() = PAY_SOURCE_MARKERS
+        val transferMarkers: List<String> get() = TRANSFER_MARKERS
+        val bankTextMarkers: List<String> get() = BANK_TEXT_MARKERS
+        val strongHints: List<String> get() = STRONG_HINTS
+        val marketingChannels: List<String> get() = MARKETING_CHANNELS
+        val payRailPackages: Set<String> get() = PAY_RAIL_PACKAGES
+        val commercePackages: Set<String> get() = COMMERCE_PACKAGES
+        val contentPackages: Set<String> get() = CONTENT_PACKAGES
     }
 
     /** 微信聊天里「我转你 100」这类也会冒出金额，做一层收紧 */

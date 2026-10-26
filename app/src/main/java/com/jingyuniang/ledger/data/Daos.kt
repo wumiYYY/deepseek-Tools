@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.data
+﻿package com.jingyuniang.ledger.data
 
 import androidx.room.Dao
 import androidx.room.Delete
@@ -265,6 +265,16 @@ interface CaptureDao {
 
     @Query("DELETE FROM capture WHERE time < :before AND status != 'PENDING'")
     suspend fun prune(before: Long)
+
+    /**
+     * 跨渠道同一笔：同金额、不同来源 App、时间窗内。
+     * 微信通知和招行通知都算 NOTIFY，靠 source 区分不了，只能靠包名。
+     */
+    @Query(
+        "SELECT COUNT(*) FROM capture WHERE amountCents = :amount AND time >= :since " +
+            "AND pkg != :pkg AND status != 'IGNORED'"
+    )
+    suspend fun countCrossSourceSimilar(amount: Long, since: Long, pkg: String): Int
 
     /** 一键把当前所有「待确认」标记为已忽略（不动已入账的账目） */
     @Query("UPDATE capture SET status = 'IGNORED' WHERE status = 'PENDING'")

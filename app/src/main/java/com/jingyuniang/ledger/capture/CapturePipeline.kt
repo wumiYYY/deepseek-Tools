@@ -17,8 +17,8 @@ import com.jingyuniang.ledger.util.AppLog
 object CapturePipeline {
 
     private const val DEDUPE_WINDOW = 150_000L
-    // 与「已入账账目」的去重窗口：只用来挡「同一笔被两个渠道各记一次」（微信通知 + 银行短信）
-    private const val TXN_DEDUPE_WINDOW = 180_000L
+    // 与「已入账账目」的跨渠道去重窗口：同一笔通常几秒内两个渠道都到，60s 足够，`n    // 窗口过大会把「同金额的两笔真实消费」误合（真机教训）
+    private const val TXN_DEDUPE_WINDOW = 60_000L
 
     /**
      * 最终置信度 = 解析分 + 抓取来源/证据校正。
@@ -45,7 +45,7 @@ object CapturePipeline {
         val strongTpl = CaptureFilters.isStrongPayTemplate(text)
         if (source == TxnSource.ACCESS) {
             conf = minOf(conf, 79)
-        } else if (source == TxnSource.NOTIFY && !hasEvidence && !(paySender && strongTpl)) {
+        } else if (source == TxnSource.NOTIFY && !hasEvidence && !strongTpl) {
             conf = minOf(conf, 79)
         }
         val chatPenalty = pkg != null && CaptureFilters.isChatApp(pkg) &&
@@ -113,7 +113,7 @@ object CapturePipeline {
         // 信用卡还款 = 资金转移（储蓄卡 → 信用卡），不是消费：
         // 记成 TRANSFER 不污染收支统计，但保留流水、且两端账户余额都会正确变化。
         // 没有信用卡账户时无法组成「A → B」，丢弃并留一句原因（用户能理解为什么没记）。
-        val repayment = CaptureFilters.isRepayment(full)
+        val repayment = CaptureFilters.isFundTransfer(full)
         if (repayment) {
             val credit = accounts.firstOrNull { it.type == com.jingyuniang.ledger.data.AccountType.CREDIT }
             if (credit == null) {
@@ -128,7 +128,7 @@ object CapturePipeline {
         val now = System.currentTimeMillis()
 
         // 1) 抓取去重：同来源 + 同金额，2.5 分钟内只认一次
-        val key = dedupeKey(pkg, parsed.amountCents)
+        val key = dedupeKey(pkg, full, parsed.amountCents, now)
         if (repo.captureDao.countDedupe(key, now - DEDUPE_WINDOW) > 0) {
             AppLog.d("重复抓取，已跳过")
             return null
@@ -136,9 +136,12 @@ object CapturePipeline {
         // 2) 与「已入账账目」去重：只挡**跨渠道**的同一笔（微信通知 + 银行短信各来一条）
         //    同来源、同金额、短时间内的两笔，可能是真实的两笔消费（连买两杯同价咖啡），
         //    不能一律当重复 —— 同来源的重复由上面的 dedupeKey（150s）负责。
-        val similar = repo.txnDao.findSimilar(parsed.amountCents, now - TXN_DEDUPE_WINDOW)
-        if (similar != null && similar.source != TxnSource.MANUAL && similar.source != source) {
-            AppLog.d("跨渠道同一笔（已有 ${similar.source} 记录），已跳过：${parsed.amountCents}")
+        // 跨渠道同一笔：微信通知 + 银行通知都算 NOTIFY，用「包名不同 + 同金额 + 60s」判断
+        val cross = repo.captureDao.countCrossSourceSimilar(
+            parsed.amountCents, now - TXN_DEDUPE_WINDOW, pkg ?: ""
+        )
+        if (cross > 0) {
+            AppLog.d("跨渠道同一笔（另一 App 在 60s 内报了同金额 ${parsed.amountCents}），已跳过")
             return null
         }
 
@@ -282,8 +285,13 @@ object CapturePipeline {
         return 0L
     }
 
-    private fun dedupeKey(pkg: String?, amountCents: Long): String =
-        "${pkg ?: "sms"}|${amountCents / 100}"
+    /**
+     * 去重键 = 交易身份（参考号 > 卡尾号+金额+时间桶 > 包名+金额+时间桶）。
+     * 见 [TxnIdentity]：这样「同一笔被微信+银行各报一次」能合，
+     * 而「同一渠道连买两杯同价咖啡」不会被误杀（时间桶不同即视为两笔）。
+     */
+    private fun dedupeKey(pkg: String?, text: String, amountCents: Long, timeMs: Long): String =
+        TxnIdentity.of(pkg, text, amountCents, timeMs)
 
     /** 自动账单的备注：去掉来源 App 名、去掉过长前缀，留一段能读懂的描述 */
     private fun cleanNote(raw: String): String {

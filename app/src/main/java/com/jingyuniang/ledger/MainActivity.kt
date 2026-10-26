@@ -273,6 +273,48 @@ class MainActivity : ComponentActivity() {
                             com.jingyuniang.ledger.util.AppLog.d("DIAG delcap #$id 已删除")
                         }
                     }
+                    cmd.startsWith("identity:") -> {
+                        // 自检：看两条通知算不算同一笔（交易身份）
+                        val raw = cmd.removePrefix("identity:")
+                        val pkg = raw.substringBefore("#")
+                        val text = raw.substringAfter("#", raw)
+                        val pe = com.jingyuniang.ledger.capture.ParseEngine
+                        val ti = com.jingyuniang.ledger.capture.TxnIdentity
+                        val amt = pe.extractAmount(text)
+                        val id = ti.of(pkg, text, amt, System.currentTimeMillis())
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG identity pkg=$pkg amt=$amt tail=${ti.cardTail(text)} ref=${ti.refNo(text)}"
+                        )
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG identity => $id  (${ti.describe(id)})"
+                        )
+                    }
+                    cmd == "rules" -> {
+                        // 导出全部规则表（写进 docs/CAPTURE_RULES_V1.md 的附录，保证文档与代码一致）
+                        val f = com.jingyuniang.ledger.capture.CaptureFilters.Tables
+                        val pt = com.jingyuniang.ledger.capture.ParseEngine.Tables
+                        fun dump(name: String, list: Collection<String>) {
+                            com.jingyuniang.ledger.util.AppLog.d("RULES|$name|${list.size}|${list.joinToString("、")}")
+                        }
+                        dump("营销词 AD_MARKERS", f.adMarkers)
+                        dump("非动账模板 NON_TXN_MARKERS", f.nonTxnMarkers)
+                        dump("资金转移 FUND_TRANSFER_MARKERS", f.fundTransferMarkers)
+                        dump("强支付模板 STRICT_PAY_TEMPLATE", f.strongPayTemplate)
+                        dump("结构证据 TXN_EVIDENCE", f.txnEvidence)
+                        dump("动账证据 PAY_EVIDENCE", f.payEvidence)
+                        dump("支付发送方 PAY_SOURCE_MARKERS", f.paySourceMarkers)
+                        dump("转账卡片 TRANSFER_MARKERS", f.transferMarkers)
+                        dump("银行短信句式 BANK_TEXT_MARKERS", f.bankTextMarkers)
+                        dump("强提示 STRONG_HINTS", f.strongHints)
+                        dump("营销渠道 MARKETING_CHANNELS", f.marketingChannels)
+                        dump("支付通道 PAY_RAIL_PACKAGES", f.payRailPackages)
+                        dump("电商 COMMERCE_PACKAGES", f.commercePackages)
+                        dump("内容 CONTENT_PACKAGES", f.contentPackages)
+                        dump("垃圾词 JUNK", pt.junk)
+                        dump("规格单位 SPEC_UNIT_AFTER", pt.specUnits)
+                        dump("收入词 INCOME_WORDS", pt.incomeWords)
+                        dump("支出词 EXPENSE_WORDS", pt.expenseWords)
+                    }
                     cmd == "captures" -> {
                         // 自检：列出最近 12 条抓取记录（含 id / 状态），用于排查「这条为什么没入账」
                         val list = com.jingyuniang.ledger.Services.repo.captureDao.all()
