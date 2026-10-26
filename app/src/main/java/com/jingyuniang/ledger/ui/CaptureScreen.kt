@@ -431,6 +431,12 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
                                     "${Dates.friendlyDay(c.time)} ${Dates.hm(c.time)} · ${c.rawText.take(40)}",
                                     color = p.sub, fontSize = 10.sp, maxLines = 1
                                 )
+                                if (c.reason.isNotBlank()) {
+                                    Text(
+                                        "↳ ${c.reason}",
+                                        color = p.sub.copy(alpha = 0.75f), fontSize = 9.sp, maxLines = 2
+                                    )
+                                }
                             }
                             if (c.status == CaptureStatus.PENDING) {
                                 Text(
@@ -641,6 +647,9 @@ private fun CaptureRow(
                 "${cat?.emoji ?: "❓"}${cat?.name ?: "未分类"} · ${c.merchant.ifBlank { c.appName }} · 置信 ${c.confidence}%",
                 color = p.sub, fontSize = 10.sp, maxLines = 1
             )
+            if (c.reason.isNotBlank()) {
+                Text("　↳ ${c.reason}", color = p.sub.copy(alpha = 0.8f), fontSize = 9.sp, maxLines = 2)
+            }
         }
         Text(
             "改分类", color = p.primary, fontSize = 11.sp,

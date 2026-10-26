@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.data
+﻿package com.jingyuniang.ledger.data
 
 import androidx.room.Entity
 import androidx.room.Index
@@ -197,7 +197,9 @@ data class Capture(
     val txnId: Long = 0,
     val confidence: Int = 0,
     val time: Long = System.currentTimeMillis(),
-    val dedupeKey: String = ""
+    val dedupeKey: String = "",
+    /** 判定说明（"为什么抓/为什么没抓"），v2 新增；空串 = 老数据 */
+    val reason: String = ""
 )
 
 @Entity(tableName = "merchant_rule")

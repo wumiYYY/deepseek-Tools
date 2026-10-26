@@ -289,6 +289,66 @@ class MainActivity : ComponentActivity() {
                             "DIAG identity => $id  (${ti.describe(id)})"
                         )
                     }
+                    cmd == "dumpdb" -> {
+                        // 把数据库（含 wal/shm）复制到外部目录，方便 adb pull 出来做迁移测试/兜底备份。
+                        // /sdcard/Android/data/<pkg>/files/ 不需要任何权限即可被 adb 读取。
+                        runCatching {
+                            val dbFile = getDatabasePath("whale_money.db")
+                            val outDir = java.io.File(getExternalFilesDir(null), "dbdump").apply { mkdirs() }
+                            var total = 0L
+                            listOf("", "-wal", "-shm").forEach { suffix ->
+                                val src = java.io.File(dbFile.path + suffix)
+                                if (src.exists()) {
+                                    val dst = java.io.File(outDir, src.name)
+                                    src.copyTo(dst, overwrite = true)
+                                    total += dst.length()
+                                }
+                            }
+                            com.jingyuniang.ledger.util.AppLog.i(
+                                "DIAG dumpdb => ${outDir.absolutePath} 共 $total 字节"
+                            )
+                        }.onFailure {
+                            com.jingyuniang.ledger.util.AppLog.e("DIAG dumpdb 失败", it)
+                        }
+                    }
+                    cmd == "snap" -> {
+                        lifecycleScope.launch {
+                            val f = com.jingyuniang.ledger.io.SnapshotManager.writeDaily(applicationContext, "manual")
+                            com.jingyuniang.ledger.util.AppLog.i(
+                                "DIAG snap => ${f?.name ?: "失败"} | ${com.jingyuniang.ledger.io.SnapshotManager.describe(applicationContext)}"
+                            )
+                        }
+                    }
+                    cmd == "snaps" -> {
+                        com.jingyuniang.ledger.io.SnapshotManager.list(applicationContext).forEach { f ->
+                            com.jingyuniang.ledger.util.AppLog.d(
+                                "DIAG snapfile ${f.name} ${f.length()}B ${f.lastModified()}"
+                            )
+                        }
+                        com.jingyuniang.ledger.util.AppLog.i(
+                            "DIAG snaps => ${com.jingyuniang.ledger.io.SnapshotManager.describe(applicationContext)}"
+                        )
+                    }
+                    cmd == "restoredb" -> {
+                        // 用最近一份「迁移前快照」压回数据库（App 会重启后生效）
+                        val snap = com.jingyuniang.ledger.io.SnapshotManager.list(applicationContext)
+                            .firstOrNull { it.name.startsWith("pre_migrate_") }
+                        if (snap == null) {
+                            com.jingyuniang.ledger.util.AppLog.w("DIAG restoredb 没有可用的迁移前快照")
+                        } else {
+                            val ok = com.jingyuniang.ledger.io.SnapshotManager.scheduleRestoreDb(applicationContext, snap)
+                            com.jingyuniang.ledger.util.AppLog.i("DIAG restoredb ${if (ok) "已安排恢复 ${snap.name}（重启生效）" else "安排失败"}")
+                        }
+                    }
+                    cmd == "reasoncheck" -> {
+                        // 打印最近几条抓取的判定原因
+                        com.jingyuniang.ledger.Services.repo.captureDao.all()
+                            .sortedByDescending { it.time }.take(6).forEach { c ->
+                                com.jingyuniang.ledger.util.AppLog.d(
+                                    "DIAG reason #${c.id} status=${c.status} amt=${c.amountCents} reason=${c.reason}"
+                                )
+                            }
+                    }
                     cmd == "rules" -> {
                         // 导出全部规则表（写进 docs/CAPTURE_RULES_V1.md 的附录，保证文档与代码一致）
                         val f = com.jingyuniang.ledger.capture.CaptureFilters.Tables

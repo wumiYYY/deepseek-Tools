@@ -335,12 +335,23 @@ object CaptureFilters {
         title: String = "",
         channelId: String? = null,
         channelName: String? = null
-    ): Boolean {
-        if (text.length < 6) return false
-        if (ParseEngine.isJunk(text)) return false
+    ): Boolean = judge(pkg, text, title, channelId, channelName).ok
+
+    /** 判定结果 + 一句人话原因（给「抓取记录」列表展示，解决「为什么这条没抓」） */
+    data class Verdict(val ok: Boolean, val reason: String)
+
+    fun judge(
+        pkg: String,
+        text: String,
+        title: String = "",
+        channelId: String? = null,
+        channelName: String? = null
+    ): Verdict {
+        if (text.length < 6) return Verdict(false, "内容太短，不像交易通知")
+        if (ParseEngine.isJunk(text)) return Verdict(false, "验证码/物流/活动等无关通知")
 
         // 【渠道闸门】营销渠道直接丢
-        if (isMarketingChannel(channelId, channelName)) return false
+        if (isMarketingChannel(channelId, channelName)) return Verdict(false, "营销/推广类通知渠道")
 
         // 短信来源放宽：银行动账短信常省略「元」（"金额为500.00，余额为8000.00"），
         // 只要出现数字就当有金额（短信本身最可靠，且前面已过垃圾词/广告/非动账三道门）
@@ -349,31 +360,31 @@ object CaptureFilters {
             text.contains("人民币") || (isSmsApp(pkg) && hasDigits)
         // 红包/转账卡片可能只有「[微信红包]」没有金额：放行给解析引擎，解析不出金额自然不会记账
         val transferCard = isChatApp(pkg) && TRANSFER_MARKERS.any { text.contains(it) }
-        if (!hasMoney && !transferCard) return false
+        if (!hasMoney && !transferCard) return Verdict(false, "没有金额信息")
 
         // 【聊天里的钱卡片】必须排在广告门之前：
         // 「[转账] 领取了你的红包」里的「领取」是广告词表里的词，但这条是真红包
         if (isChatApp(pkg) && TRANSFER_MARKERS.any { text.contains(it) } &&
             !BANK_TEXT_MARKERS.any { text.contains(it) }
-        ) return true
+        ) return Verdict(true, "聊天里的转账/红包卡片")
 
         // 【广告闸门】营销词 + 无动账证据 → 丢掉
         val adLike = AD_MARKERS.any { text.contains(it) || title.contains(it) }
         val payEvidence = PAY_EVIDENCE.any { text.contains(it) }
-        if (adLike && !payEvidence) return false
+        if (adLike && !payEvidence) return Verdict(false, "营销广告（命中「${AD_MARKERS.firstOrNull { text.contains(it) || title.contains(it) }}」）")
 
         // 【资金转移】放行，由 pipeline 记成 TRANSFER（不计收支）
-        if (isFundTransfer(text)) return hasMoney
+        if (isFundTransfer(text)) return Verdict(hasMoney, "资金转移（还款/提现/理财），记成转账不计收支")
 
 
         // 【非动账模板】账单提醒 / 额度调整 / 营销：即使带「消费」「还款」也不记账
-        if (isNonTxnNotice(text)) return false
+        if (isNonTxnNotice(text)) return Verdict(false, "账单/额度/营销类提醒，不是刚发生的交易（命中「${NON_TXN_MARKERS.firstOrNull { text.contains(it) }}」）")
 
         // 【列表页闸门】滑动账单页会在一次事件里塞进好几笔金额 → 整段丢弃
-        if (looksLikeStatementList(text)) return false
+        if (looksLikeStatementList(text)) return Verdict(false, "账单列表页（出现 ${amountCount(text)} 笔金额），不是单条交易")
 
         // 短信：银行动账短信基本都带金额，最可靠，放行
-        if (isSmsApp(pkg)) return true
+        if (isSmsApp(pkg)) return Verdict(true, "银行/服务短信")
 
         // 聊天类（微信/QQ/钉钉/飞书…）：
         // ① 标题是「微信支付 / QQ钱包 / 招商银行」→ 真支付通知
@@ -381,26 +392,26 @@ object CaptureFilters {
         // ③ 标题是人名/群名，正文却是银行短信句式 → 群里转发的文本，必须丢弃
         if (isChatApp(pkg)) {
             val titleOk = PAY_SOURCE_MARKERS.any { title.contains(it) }
-            if (titleOk) return STRONG_HINTS.any { text.contains(it) }
+            if (titleOk) return if (STRONG_HINTS.any { text.contains(it) }) Verdict(true, "支付类通知（发送方是「$title」）") else Verdict(false, "支付发送方的非动账消息")
             val bankLike = BANK_TEXT_MARKERS.any { text.contains(it) }
-            if (TRANSFER_MARKERS.any { text.contains(it) } && !bankLike) return true
+            if (TRANSFER_MARKERS.any { text.contains(it) } && !bankLike) return Verdict(true, "聊天里的转账/红包卡片")
             // 少数 ROM 会把「微信支付」这个发送方塞进正文、标题留空：
             // 文本本身是支付结果模板 + 不像群里的银行短信 → 放行（仍会进待确认，不会自动入账）
-            return STRICT_PAY_TEMPLATE.any { text.contains(it) } && !bankLike
+            return if (STRICT_PAY_TEMPLATE.any { text.contains(it) } && !bankLike) Verdict(true, "支付结果文案") else Verdict(false, "聊天消息（非支付）")
         }
 
         // 【内容/短视频/电商】刷视频时的「9.9元包邮」「直播间3元券」绝不能进账：
         // 只认「支付成功 / 已付款 / 订单支付成功」这类强模板
         if (isContentApp(pkg) || isCommerceApp(pkg)) {
-            return STRICT_PAY_TEMPLATE.any { text.contains(it) }
+            return if (STRICT_PAY_TEMPLATE.any { text.contains(it) }) Verdict(true, "App 内的支付成功通知") else Verdict(false, "内容/电商 App 的推送，非支付结果")
         }
 
         // 支付通道（银行 / 云闪付等）：必须有支付动词
         if (isPayRail(pkg)) {
-            return STRONG_HINTS.any { text.contains(it) }
+            return if (STRONG_HINTS.any { text.contains(it) }) Verdict(true, "支付/银行类通知") else Verdict(false, "支付类 App 的非动账消息")
         }
 
-        return hasMoney && STRONG_HINTS.any { text.contains(it) }
+        return if (hasMoney && STRONG_HINTS.any { text.contains(it) }) Verdict(true, "含金额与支付动词") else Verdict(false, "无可识别的支付信息")
     }
 
     /**

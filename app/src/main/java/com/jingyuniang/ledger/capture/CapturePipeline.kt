@@ -17,7 +17,8 @@ import com.jingyuniang.ledger.util.AppLog
 object CapturePipeline {
 
     private const val DEDUPE_WINDOW = 150_000L
-    // 与「已入账账目」的跨渠道去重窗口：同一笔通常几秒内两个渠道都到，60s 足够，`n    // 窗口过大会把「同金额的两笔真实消费」误合（真机教训）
+    // 与「已入账账目」的跨渠道去重窗口：同一笔通常几秒内两个渠道都到，60s 足够，
+    // 窗口过大会把「同金额的两笔真实消费」误合（真机教训）
     private const val TXN_DEDUPE_WINDOW = 60_000L
 
     /**
@@ -99,7 +100,11 @@ object CapturePipeline {
             AppLog.d("命中抓取黑名单，已跳过 pkg=$pkg")
             return null
         }
-        if (!CaptureFilters.shouldRead(pkg ?: "", full, title)) return null
+        val verdict = CaptureFilters.judge(pkg ?: "", full, title)
+        if (!verdict.ok) {
+            AppLog.d("未通过闸门：${verdict.reason}")
+            return null
+        }
         if (pkg == "com.tencent.mm" && !CaptureFilters.wechatLikelyPayment(full)) return null
 
         val repo = Services.repo
@@ -141,7 +146,7 @@ object CapturePipeline {
         // 1) 抓取去重：同来源 + 同金额，2.5 分钟内只认一次
         val key = dedupeKey(pkg, full, parsed.amountCents, now)
         if (repo.captureDao.countDedupe(key, now - DEDUPE_WINDOW) > 0) {
-            AppLog.d("重复抓取，已跳过")
+            AppLog.d("重复抓取，已跳过（交易身份 $key 在 150s 内已存在）")
             return null
         }
         // 2) 与「已入账账目」去重：只挡**跨渠道**的同一笔（微信通知 + 银行短信各来一条）
@@ -190,7 +195,8 @@ object CapturePipeline {
             status = CaptureStatus.PENDING,
             confidence = parsed.confidence,
             time = now,
-            dedupeKey = key
+            dedupeKey = key,
+            reason = verdict.reason
         )
         val captureId = repo.captureDao.insert(capture)
         val saved = capture.copy(id = captureId)

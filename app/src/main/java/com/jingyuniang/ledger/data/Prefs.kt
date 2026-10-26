@@ -47,7 +47,11 @@ data class Settings(
     /** 应用锁 4 位密码，空 = 未启用 */
     val lockPin: String = "",
     /** 抓取黑名单：`pkg|keyword`，keyword 空 = 整个 App 不抓（见 CaptureBlocklist） */
-    val captureBlocklist: List<String> = emptyList()
+    val captureBlocklist: List<String> = emptyList(),
+    /** 最近一次自动快照对应的 App versionCode（用来判断"刚升级过"） */
+    val lastSnapshotVersionCode: Long = 0L,
+    /** 最近一次自动快照的时间 */
+    val lastSnapshotTime: Long = 0L
 )
 
 class Prefs(private val ctx: Context) {
@@ -75,6 +79,8 @@ class Prefs(private val ctx: Context) {
         val captureMaster = booleanPreferencesKey("capture_master")
         val lockPin = stringPreferencesKey("lock_pin")
         val captureBlocklist = stringSetPreferencesKey("capture_blocklist")
+        val lastSnapshotVersionCode = longPreferencesKey("last_snapshot_version")
+        val lastSnapshotTime = longPreferencesKey("last_snapshot_time")
     }
 
     val flow: Flow<Settings> = ctx.prefStore.data.map { p ->
@@ -100,7 +106,9 @@ class Prefs(private val ctx: Context) {
             quickNotify = p[K.quickNotify] ?: false,
             captureMaster = p[K.captureMaster] ?: true,
             lockPin = p[K.lockPin] ?: "",
-            captureBlocklist = (p[K.captureBlocklist] ?: emptySet()).toList()
+            captureBlocklist = (p[K.captureBlocklist] ?: emptySet()).toList(),
+            lastSnapshotVersionCode = p[K.lastSnapshotVersionCode] ?: 0L,
+            lastSnapshotTime = p[K.lastSnapshotTime] ?: 0L
         )
     }
 
@@ -138,6 +146,12 @@ class Prefs(private val ctx: Context) {
     }
 
     suspend fun clearCaptureBlocks() = put(K.captureBlocklist, emptySet())
+
+    /** 记录自动快照的版本与时间 */
+    suspend fun setSnapshotMeta(versionCode: Long, time: Long) {
+        put(K.lastSnapshotVersionCode, versionCode)
+        put(K.lastSnapshotTime, time)
+    }
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
         ctx.prefStore.edit { it[key] = value }

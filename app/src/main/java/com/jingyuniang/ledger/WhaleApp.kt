@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger
+﻿package com.jingyuniang.ledger
 
 import android.app.Application
 import android.app.NotificationChannel
@@ -26,11 +26,30 @@ object Services {
         private set
     val repo: Repo by lazy { Repo(com.jingyuniang.ledger.data.AppDatabase.get(ctx)) }
     val settings = MutableStateFlow(Settings())
+
+    /** 当前 App 的 versionCode（用于「升级后首次启动」判定） */
+    val appVersionCode: Long by lazy {
+        runCatching {
+            val pm = ctx.packageManager
+            val info = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                pm.getPackageInfo(ctx.packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(ctx.packageName, 0)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode
+            else @Suppress("DEPRECATION") info.versionCode.toLong()
+        }.getOrDefault(0L)
+    }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun init(context: Context) {
         if (::ctx.isInitialized) return
         ctx = context.applicationContext
+        // ① 最早：如果上次安排了「从迁移前快照恢复」，必须在数据库被打开之前压回
+        runCatching {
+            com.jingyuniang.ledger.io.SnapshotManager.applyPendingRestore(ctx)?.let { AppLog.i(it) }
+        }
         prefs = Prefs(ctx)
         appScope.launch {
             prefs.flow.collect { settings.value = it }
@@ -52,6 +71,12 @@ class WhaleApp : Application() {
                 }
                 Services.repo.runRecurring()
                 Services.repo.pruneCaptures()
+                // ② 自动快照（升级后首次启动 / 距上次 >24h）—— 数据库此时已迁移成功，可安全导出
+                com.jingyuniang.ledger.io.SnapshotManager
+                    .dueReason(this@WhaleApp, Services.appVersionCode)
+                    ?.let { reason ->
+                        com.jingyuniang.ledger.io.SnapshotManager.writeDaily(this@WhaleApp, reason)
+                    }
                 if (Services.settings.value.quickNotify) {
                     com.jingyuniang.ledger.capture.QuickEntryNotifier.show(this@WhaleApp)
                 }

@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.io
+﻿package com.jingyuniang.ledger.io
 
 import android.content.Context
 import android.net.Uri
@@ -46,8 +46,8 @@ object BackupManager {
 
     data class Result(val ok: Boolean, val message: String, val file: File? = null)
 
-    suspend fun export(context: Context, password: String): Result = withContext(Dispatchers.IO) {
-        try {
+    /** 把整库打包成 JSON（导出与自动快照共用；不含加密） */
+    suspend fun buildExportJson(): JSONObject {
             val repo = Services.repo
             val root = JSONObject()
             root.put("version", 1)
@@ -62,7 +62,12 @@ object BackupManager {
             root.put("rules", JSONArray().apply { repo.ruleDao.all().forEach { put(ruleJson(it)) } })
             root.put("merchants", JSONArray().apply { repo.merchantDao.all().forEach { put(merchantJson(it)) } })
             root.put("txns", JSONArray().apply { repo.txnDao.all().forEach { put(txnJson(it)) } })
+            return root
+    }
 
+    suspend fun export(context: Context, password: String): Result = withContext(Dispatchers.IO) {
+        try {
+            val root = buildExportJson()
             val plain = root.toString().toByteArray(Charsets.UTF_8)
             val encrypted = encrypt(plain, password)
             val dir = File(context.filesDir, "backups").apply { mkdirs() }

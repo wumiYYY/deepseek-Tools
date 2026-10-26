@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.ui
+﻿package com.jingyuniang.ledger.ui
 
 import android.content.Context
 import android.content.Intent
@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +63,8 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     var model by remember { mutableStateOf(settings.model) }
     var apiBase by remember { mutableStateOf(settings.apiBase) }
     var hint by remember { mutableStateOf("") }
+    var autoSnapNote by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     ScreenColumn("AI 设置", onBack) {
         WhaleCard {
@@ -174,6 +177,8 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
     val p = WhaleTheme.palette
     val ctx = LocalContext.current
     var hint by remember { mutableStateOf("") }
+    var autoSnapNote by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
     var shareTarget by remember { mutableStateOf<File?>(null) }
     var askPassword by remember { mutableStateOf<String?>(null) } // "backup" / "restore"
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
@@ -250,6 +255,41 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
             ActionButton("从备份恢复（会覆盖当前数据）", danger = true) {
                 runCatching { pickBackup.launch(arrayOf("*/*")) }
                     .onFailure { hint = "这台设备没有文件选择器，无法选文件" }
+            }
+        }
+
+        // 自动快照（App 自动做的「救命备份」）：升级后/每天一份，不需要密码
+        Spacer(Modifier.height(10.dp))
+        WhaleCard {
+            Text("自动快照（App 自动生成）", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                com.jingyuniang.ledger.io.SnapshotManager.describe(ctx),
+                color = p.sub, fontSize = 11.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "① 每次升级后、以及每天第一次打开 App 时各存一份（保留最近 7 份）\n" +
+                    "② 升级要改数据库表结构之前，会先把整个数据库文件抄一份（迁移失败也不丢）\n" +
+                    "③ 这些只存在 App 私有目录，卸载 App 会一起消失；跨手机请用上面的加密备份",
+                color = p.sub, fontSize = 10.sp, lineHeight = 15.sp
+            )
+            if (autoSnapNote.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(autoSnapNote, color = p.primary, fontSize = 11.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            ActionButton("现在生成一份快照") {
+                autoSnapNote = "正在生成…"
+                scope.launch {
+                    val f = com.jingyuniang.ledger.io.SnapshotManager
+                        .writeDaily(ctx, "manual")
+                    autoSnapNote = if (f != null) {
+                        "已生成：${f.name}（${f.length() / 1024} KB）"
+                    } else {
+                        "生成失败，详见「抓取/诊断日志」"
+                    }
+                }
             }
         }
 
