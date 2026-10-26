@@ -10,13 +10,14 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | **v1.3.2**（versionCode **10302**，数据库 schema **v2**） |
-| 提交 | `main` HEAD = `dafe76d`（tag `v1.3.2` = `eac3531`），已推送 GitHub |
-| CI | ✅ 绿（GitHub Actions：`单元测试（108 个）` + `规则文件校验`） |
-| 产物 | `dist/1.3.2/鲸鱼娘金库-v1.3.2.apk`（24.56 MB，仅 arm64-v8a） |
-| 设备 | 用户手机已装 v1.3.2；**真实账本 30 笔**、`pendingCaptures=1`、`blocklist=0` |
+| 版本 | **v1.4.0**（versionCode **10400**，数据库 schema **v2**，未动 schema） |
+| 提交 | `main` HEAD 见 `git log -1`（本会话新增 `release: v1.4.0` 一提交，已在本机 tag `v1.4.0`） |
+| CI | 本地 `:app:testDebugUnitTest` **120 个全绿**；GitHub Actions 待 `push` 后确认（红灯不许合） |
+| 产物 | `dist/1.4.0/鲸鱼娘金库-v1.4.0.apk`（24.58 MB，仅 arm64-v8a，sha256 `34da077d…8927`；v2 签名指纹已核对 = `e7962e34…1975`） |
+| 设备 | 用户手机仍是 v1.3.2；**v1.4.0 还没装机回归**（新加的「说人话的规则」卡片要真机看一眼再给人用） |
+| 真实账本 | 30 笔、`pendingCaptures=1`、`blocklist=0`（未动） |
 | 余额基线 | `1:0, 2:-119910, 3:-38923`（账户 1:现金 2:微信* 3:支付宝） |
-| 测试 | **108 个**单测全绿（含 22 个"逐条遍历 490 条规则"的断言） |
+| 测试 | **120 个**单测（108 + 新增 `RuleGuideTest` 12 个；仍含 22 个"逐条遍历 490 条规则"的断言） |
 
 > ⚠️ **绝对不要清用户数据**。造测试数据后必须用 `del:<txnId>` / `delcap:<id>` 删干净，
 > 并复核 `txnCount` / `balances` 回到上表基线。
@@ -84,17 +85,20 @@ app/src/main/
 │   │   ├── ParseEngine.kt           ← 【核心】金额打分、方向、商户、账户/分类匹配
 │   │   ├── CapturePipeline.kt       ← 【核心】去重（身份/跨渠道/长窗）+ 置信度 + 入账
 │   │   ├── RuleStore.kt             ← 规则库：用户文件 → assets → 代码兜底 + 加载校验
+│   │   │                              + 单张表读写（table/withTable/appendWords/addWords/removeWord）
+│   │   ├── RuleGuide.kt             ← 「说人话的规则」索引：症状 → 该动哪张表 + 加哪些词（v1.4.0）
 │   │   ├── TxnIdentity.kt           ← 交易身份（ref > 卡尾号+金额+时间桶 > 包名+金额+桶）
 │   │   ├── CaptureBlocklist.kt      ← 「以后别再抓这类」黑名单
 │   │   └── CaptureNotificationListener.kt / CaptureAccessibilityService.kt
 │   ├── data/                        ← Room（AppDatabase/Entities/Daos/Repo/Prefs）
 │   ├── io/BackupManager.kt          ← 加密备份（.whalebk，AES-GCM）
 │   ├── io/SnapshotManager.kt        ← 自动快照（迁移前 db 复制 + 每日 JSON）
-│   └── ui/                          ← Compose（CaptureScreen/SettingsScreens/AppViewModel…）
+│   └── ui/                          ← Compose（CaptureScreen/SettingsScreens/AppViewModel/RuleGuideCard…）
 └── test/java/.../
     ├── CaptureRuleMatrixTest.kt     ← 37 个主路径场景（断言归类+金额+是否自动入账）
     ├── CaptureScenariosExtraTest.kt ← 80 个长尾场景（银行短信模板/微信支付宝/资金转移/干扰）
     ├── CaptureAllRulesTest.kt       ← **逐条遍历 18 张规则表 / 490 条**，删词即红
+    ├── RuleGuideTest.kt             ← **把 25 条「人话建议」逐条真加一遍**，说假话即红（v1.4.0）
     └── RuleStoreTest / SnapshotVersionTest / CaptureFiltersTest / ParseEngineTest / BalanceParserTest / BillImporterTest
 ```
 
@@ -168,6 +172,9 @@ app/src/main/
 | 一键忽略 | 待确认 11 条 → `pendingCaptures=0`，已入账账目不变 |
 | 抓取黑名单 | 点 🚫 → `blocklist=1` → 「已屏蔽的来源」→「全部恢复」归 0 |
 | 升级保留配置 | `aiEnabled/model=sc-deepseek-flash/apiBase=litellm…/key=len=25` 升级前后一致 |
+| 签名一致性（v1.4.0 会话） | `keytool` 读 `keystore/jingyuniang-release.jks`、`apksigner` 读 `dist/1.3.2` 与 `dist/1.4.0` 的 APK —— 三处 SHA-256 都是 `e7962e34…1975`，`CN=JingYuniang`，v2 签名方案 |
+| 交接脚本可用（v1.4.0 会话） | `setup-signing.ps1` 在一个「只有 jks」的干净路径上跑通：放好 keystore、写好 `local.properties`（无 BOM）、自检打印 `✅ 与正式版一致`，退出码 0 |
+| 说人话的规则（v1.4.0） | `RuleGuideTest` 12 个断言：25 条建议逐条真加一遍 + 导出/解析往返不丢词 + 重复加不撑表 + 能撤回；**尚未真机回归** |
 
 ---
 
@@ -194,6 +201,16 @@ app/src/main/
 18. GitHub 匿名 API 60 次/小时会 403；查 CI 抓 HTML 页面或用 `gh`。
 19. `lifecycleScope.launch` 里 `this@MainActivity` 会被解析成 CoroutineScope → 用 `applicationContext`。
 20. Room DAO 加查询要看清楚加到哪个 Dao（退款查询曾加进 CaptureDao 导致 Unresolved）。
+21. **PowerShell `Set-Content -Encoding UTF8` 在 PS5 会写 BOM**，而 Java 的 `Properties.load()`
+    把 BOM 当成第一行的一部分（多出一条垃圾键）。写 `local.properties` 要
+    `[IO.File]::WriteAllText(..., New-Object Text.UTF8Encoding($false))`。
+22. **`keytool` 打印的指纹是 `E7:96:2E:34…`（大写 + 冒号）**，直接 `-notmatch "e7962e34"`
+    永远不匹配 → 会把好钥匙误报成野钥匙。比对前先 `-replace ':',''` 再 `ToLower()`。
+23. `RuleStore` 里的 `Rules.table()/appendWords()` 是**顶层扩展函数**（不是我手误，是为了
+    UI/测试不用写 `with(RuleStore){}`）；测试文件必须 `import com.jingyuniang.ledger.capture.table`
+    等等，否则报一堆 `Unresolved reference`（`compileDebugUnitTestKotlin` 会一次喷 20 行）。
+24. 仓库里的 `README.md` 曾被 PowerShell 的 `` `a `` `` `f `` `` `t `` 转义吃掉首字母（`assets` 变 `ssets`），
+    表现为文件里混进 BEL/FF/TAB 控制字符；改文档后 grep 一下 `[char]7/12/9`。
 
 ---
 
@@ -201,7 +218,7 @@ app/src/main/
 
 | 优先级 | 项 | 说明 |
 |---|---|---|
-| P1 | 规则卡的「人话索引」 | 490 行 JSON 普通用户不会改。加"老被淘宝推送烦 → 往 nonTxnMarkers 加词"这类对照，或直接给"加一个屏蔽词"输入框 |
+| ~~P1~~ | ~~规则卡的「人话索引」~~ | ✅ **v1.4.0 已做**：`capture/RuleGuide.kt` + `ui/RuleGuideCard.kt`，25 条症状→加词，`RuleGuideTest` 12 个断言守着 |
 | P1 | P1-6 图片附件 | 记账拍小票存图（`res/xml/file_paths.xml` 已有 cache-path） |
 | P2 | 应用锁入口 | `Settings.lockPin` 已有字段，缺 UI 与校验 |
 | P2 | AI 第二轮 | 自由聊天（不锁账本）+ 推理模型 + 月报复盘；`ai/AiAgent` 已有工具路由 |
@@ -210,6 +227,9 @@ app/src/main/
 | P3 | App 内检查更新 | `update.json` 格式在 `docs/RELEASE.md` §4.2 |
 | P3 | 删 `ui/VoicePanel.kt` | 无用文件 |
 
+> 「人话索引」的下一步延伸（还没做，别当成已完成）：把 `RuleGuide` 的命中词条接进 `CaptureScreen`
+> 的「🤔 为什么没记」旁边，让用户在看某条被判定的通知时**从那条直接加词**（现在是先来设置页搜）。
+
 ---
 
 ## 8. 协作（有合作者会一起改）
@@ -217,10 +237,19 @@ app/src/main/
 - **许可证**：代码 MIT + 美术素材 CC BY-NC-SA 4.0（禁止商用）→ `LICENSE`、README「素材授权」。
 - **CI**：`.github/workflows/ci.yml` —— push/PR 到 main 跑 108 个单测 + 规则 JSON 校验。**红灯不许合**。
 - **流程**：功能走 `feat/xxx` 分支 + PR；`main` 只放发版提交；规则改动**单独 commit**（最易冲突）。
-- **签名**：仓库**故意不含** `.jks`。合作者私密渠道拿到 `jingyuniang-release.jks` + 三个密码，
-  然后 `.\scripts\setup-signing.ps1 -JksPath <路径>` 一步配好（写 `local.properties`，不入库）。
+- **签名**：仓库**故意不含** `.jks`。合作者私密渠道拿到 `jingyuniang-release.jks` + 三个口令，
+  然后 `.\scripts\setup-signing.ps1 -JksPath <路径> -StorePassword … -KeyPassword …` 一步配好
+  （写 `local.properties`，不入库）。脚本现在会**自检**：真拿口令开一次密钥库、比一次证书指纹，
+  口令/别名错或拿到野钥匙会在这一步就红，而不是等到发版时静默出 unsigned 包（踩过）。
   没凭据也能构建，但出的是 unsigned 包，装不上手机。
+- **交接包**（v1.4.0 会话生成）：`D:\Tools\deepseek_build_Tools\_signing_handover\`（**在仓库外**，
+  `git add -A` 带不走）＋ 同名 `.zip`（在 `…\deepseek_build_Tools\` 下）。里面有 jks、`local.properties`、
+  `SHA256SUMS.txt`、`README-签名交接.md`（装法/验证命令/出错症状对照表/保管规矩）。
+  发给合作者只走私密渠道；**这两个路径都不要挪进仓库**。
+- **三个口令**：`WHALE_STORE_PASSWORD` = `WHALE_KEY_PASSWORD` = `whalemoney2024`，`WHALE_KEY_ALIAS` = `jingyuniang`。
+  ⚠️ `setup-signing.ps1` 旧默认别名是 `whale`（错的，已修成 `jingyuniang`），手上若是旧脚本要自己传 `-KeyAlias`。
 - **证书指纹**：`SHA-256 = e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975`（CN=JingYuniang）。
+  `dist/1.3.2` 的 APK 与 `keystore/jingyuniang-release.jks` 已核对一致；密钥有效期到 2056-10-14。
 - **不要做**：提交 `local.properties`/`*.jks`/真实 `.db`/`dist/` 里的 APK；加回 destructive fallback；
   为了"待确认少几条"放宽 `shouldRead`；改规则不跑测试 / 改 schema 不写迁移。
 
