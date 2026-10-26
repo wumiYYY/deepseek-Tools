@@ -7,7 +7,7 @@
 ## 0. 一句话现状
 
 Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），核心是**自动记账**（通知/短信抓取 + AI 一句话记账），UI 是二次元深蓝+鎏金女仆风。
-**当前版本 v1.2.0（versionCode 10200）**，产物 `dist/1.2.0/鲸鱼娘金库-v1.2.0.apk`（24.5 MB，只含 arm64-v8a），手机已装机。
+**当前版本 v1.2.1（versionCode 10201）**，产物 `dist/1.2.1/鲸鱼娘金库-v1.2.1.apk`（24.5 MB，只含 arm64-v8a），手机已装机（用户的真实账本 28 笔，别乱清）。
 发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`，**给使用者的说明书是 `docs/用户指引.md`**（`release.ps1` 会自动把它放进 `dist/<版本>/`）。
 代码已入 git 并推到 `https://github.com/wumiYYY/deepseek-Tools`（`main` + tag `v1.2.0`）。
 本轮修完：**P0-3 AI 记账真写库 ✅**、**更新余额面板第 1 刀（手动输入）✅**、**第 2 刀（截图 OCR + 认账户）✅**；
@@ -125,7 +125,10 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 | **加密备份 → 恢复** | `backup ok=true 备份成功：鲸鱼娘备份-…whalebk（9 KB）`；删掉 3 笔后用**错误密码**恢复 → `密码不对，或文件已损坏`，数据不动；用正确密码 → `恢复完成，共 3 笔账目`，id/类型/金额/账户/来源/时间戳完全一致，余额也回来了 |
 | **抓取流水线回归（本轮改过 ParseEngine/findSimilar）** | `capture:0` 微信 ¥25 → 2500/置信度68→待确认；`capture:1` 银行短信 → 4800/65→待确认；`capture:2` 支付宝 → 1250/88→自动入账 txn#27（acc=支付宝、cat=23） |
 | **中文口语金额** | `十块钱 / 二十五块 / 一百五十元 / 十二块五` 全走单测 + 真机 `AI book amount=1000` |
-| 49 个单元测试（8 BillImporter + 14 CaptureFilters + 16 ParseEngine + 11 BalanceParser） | `testDebugUnitTest` 全绿 0 失败 |
+| 54 个单元测试（8 BillImporter + 19 CaptureFilters + 16 ParseEngine + 11 BalanceParser） | `testDebugUnitTest` 全绿 0 失败 |
+| **升级不丢数据（v1.2.0 → v1.2.1）** | 覆盖安装前后 `txnCount=31`、`balances=1:0, 2:-121210, 3:123456` 一字不差；versionCode 10200→10201 |
+| **抓取准确率（v1.2.1 规则）** | 读屏只在页面切换+结果页触发；账单提醒/额度/营销渠道拦掉；≥3 笔金额判列表页；通知无结构证据与所有读屏来源置信度封顶 79 |
+| **待确认「全部忽略」** | 真机点按：`一键忽略待确认：11 条` → `pendingCaptures=0`，`txnCount` 仍 31（账目未受影响） |
 | **全新安装（模拟发给使用者）的第一次体验** | 装了 debug 变体（`com.jingyuniang.vault.debug`，独立包名，不碰正式包数据）：首装引导 3 页 → 点「去开启权限」直接落到权限向导（4 项 + 无障碍可选 + 5 家厂商自启动路径）；首次种子数据正确（`accounts=1:现金, 2:微信*, 3:支付宝, 4:银行卡, 5:信用卡`，0 笔流水）。截图：`docs/v_guide_onboarding2/3.png`、`docs/v_guide_permission.png` |
 | **随包使用说明** | `docs/用户指引.md` 由 `release.ps1` 自动落到 `dist/<版本>/使用说明.txt(.md)`（txt 带 BOM）；`release.ps1 -GuideOnly` 可只更新说明、不动 APK 的 sha256 |
 
@@ -133,7 +136,21 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 
 ## 4. 未完成（按优先级，含已定位的实现细节）
 
-### 更新余额面板 · 第 3 刀：无障碍读屏（未做，下一步）
+### 抓取准确率 · 第二轮（v1.2.1 后仍有待打磨）
+已经做了：结果页判定、非动账模板、通知渠道过滤、列表页丢弃、置信度封顶、一键忽略。
+还可以做（按收益排序）：
+1. **「别抓这个 App / 这条」黑名单**：待确认行上加「以后别再抓」，写进新表或 AutoRule(反向)，命中直接丢；
+2. **按包名 + 渠道的统计面板**：抓取记录里显示「某银行 3 天抓了 40 条，其中 2 条确认入账 → 建议关掉它的通知抓取」；
+3. **结构化模板库**：为常见银行（招行/工行/建行/中信…）写正则模板，比通用评分准得多；
+4. **同笔合并**：`capture:2` 这类「通知 + 短信同一笔」目前靠 180s 同金额去重，跨来源仍可能漏合。
+
+### AI · 第二轮（v1.2.1 只做了「接口可换」）
+- **自由聊天**：现在只有「问账」（锁死账本上下文）。要真正的聊天/推理，需要一个不注入账本的模式，
+  由模型自己决定要不要查账（现有 `AiAgent` 的 JSON 工具路由可以扩成多轮 + 多工具）。
+- **推理模型**：`deepseek-reasoner` 已能通过「模型名」使用，但 UI 没有引导，也没处理 reasoning 内容的展示。
+- **AI 复盘/建议**：`aiReview()` 已存在，只差一个独立入口（月报卡片 P1-5 正好一起做）。
+
+### 更新余额面板 · 第 3 刀：无障碍读屏（未做）
 - UI 入口已就位：`BalanceSourceRow("♿", "读屏识别", …, false)`
 - 现成能力：`capture/CaptureAccessibilityService.kt` 已在读页面文本；`Prefs.captureAccess`
 - 做法：打开微信/支付宝「钱包」页 → 服务读到整屏文本 → 直接丢给 `BalanceParser.parse(文本)` 和 `guessAccountType(文本)` → 回填同一个 `BalanceInputDialog`

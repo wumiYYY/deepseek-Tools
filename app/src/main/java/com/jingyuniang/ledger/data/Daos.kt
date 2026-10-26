@@ -266,6 +266,10 @@ interface CaptureDao {
     @Query("DELETE FROM capture WHERE time < :before AND status != 'PENDING'")
     suspend fun prune(before: Long)
 
+    /** 一键把当前所有「待确认」标记为已忽略（不动已入账的账目） */
+    @Query("UPDATE capture SET status = 'IGNORED' WHERE status = 'PENDING'")
+    suspend fun ignoreAllPending(): Int
+
     @Query("DELETE FROM capture")
     suspend fun clear()
 }

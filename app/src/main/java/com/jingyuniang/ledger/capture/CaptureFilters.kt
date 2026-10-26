@@ -1,6 +1,18 @@
 package com.jingyuniang.ledger.capture
 
-/** 判断一条通知 / 一段页面文字值不值得交给解析引擎 */
+/**
+ * 判断一条通知 / 一段页面文字值不值得交给解析引擎。
+ *
+ * 设计原则（业界侧载记账 App 的共识，没有官方标准，但踩过的坑高度一致）：
+ * 1) **来源分级**：短信 > 银行/支付 App 的交易通知 > 读屏；越靠后越不可信。
+ * 2) **结构证据**：一笔「刚发生的交易」一定有结构化痕迹（余额/交易单号/商户/尾号/交易时间），
+ *    而营销推送、账单提醒只有金额。**只有金额 → 一律不当交易**。
+ * 3) **非动账模板**：本期账单、还款提醒、额度调整、优惠券…… 命中即丢（它们全都带金额）。
+ * 4) **列表页识别**：账单页/明细列表一屏里会出现很多金额，出现 ≥3 笔金额就判为列表页，整段丢弃
+ *    （这条专治「滑动账单页被逐个抓」）。
+ * 5) **渠道过滤**：银行 App 的营销推送通常在独立的通知渠道（营销/活动/推荐），按渠道名直接丢。
+ * 6) 宁可少记，不要错记：拿不准就让置信度封顶、进「待确认」让用户点头。
+ */
 object CaptureFilters {
 
     /** 已知的支付类应用包名 */
@@ -83,11 +95,52 @@ object CaptureFilters {
         "会员日", "补贴", "抵用", "抵扣", "礼包", "秒杀", "申请办卡"
     )
 
+    /**
+     * 「不是动账」的模板词：这些通知**一定带金额**，但它们是账单/提醒/营销，不是刚发生的交易。
+     * 这是「银行推送一堆待确认」的主要来源，命中即丢。
+     */
+    private val NON_TXN_MARKERS = listOf(
+        // 账单类
+        "本期账单", "账单已出", "账单日", "账单金额", "应还金额", "应还", "待还", "最低还款",
+        "还款提醒", "即将到期", "到期提醒", "逾期", "最后还款日",
+        // 额度/授信类
+        "额度调整", "额度提醒", "额度已", "提额", "预授信", "可借", "可贷", "免息",
+        // 营销/运营类
+        "优惠券", "立减", "满减", "活动", "抽奖", "签到", "积分", "权益", "福利",
+        "推荐", "开通", "申请", "邀请", "回馈", "首绑", "办卡", "加油券", "立享",
+        "限时", "特惠", "领券", "领取", "秒杀", "抢购", "升级有礼"
+    )
+
     /** 真正的动账证据：有这些词才可能是账单，没有就是广告 */
     private val PAY_EVIDENCE = listOf(
         "消费", "支出", "扣款", "支付成功", "已付款", "已扣", "存入",
         "转入", "转账", "还款", "退款", "提现", "工资", "利息", "结息", "缴费成功"
     )
+
+    /**
+     * 结构证据：证明「这是一笔刚发生的交易」而不是账单/营销。
+     * 至少要有其中一项，否则金额再大也只当可疑（进待确认，不自动入账）。
+     */
+    private val TXN_EVIDENCE = listOf(
+        "尾号", "交易单号", "流水号", "订单号", "商户", "收款方", "付款方", "商家",
+        "交易时间", "可用额度", "账户余额", "当前余额", "余额为", "余额为人民币", "余额",
+        "实时", "已入账", "已到账"
+    )
+
+    /** 支付结果页的强文案（读屏只在被这些词命中时才认） */
+    private val RESULT_PAGE_MARKERS = listOf(
+        "支付成功", "付款成功", "交易成功", "已支付", "已付款", "付款完成", "支付完成",
+        "收款到账", "到账成功", "交易已完成", "支付凭证"
+    )
+
+    /** 营销类通知渠道名（银行 App 的营销推送几乎都单独占一个渠道） */
+    private val MARKETING_CHANNELS = listOf(
+        "营销", "活动", "推荐", "推广", "优惠", "福利", "权益", "通知消息", "消息通知",
+        "market", "promo", "advert", "offer", "news"
+    )
+
+    /** 金额出现次数的粗计数（带单位/币符），用来识别「账单列表页」 */
+    private val AMOUNT_WITH_UNIT = Regex("""(?:[¥￥]\s*\d[\d,]*(?:\.\d{1,2})?)|(?:\d[\d,]*(?:\.\d{1,2})?\s*[元块])""")
 
     fun isSmsApp(pkg: String): Boolean = smsPackages.any { pkg.contains(it, true) } ||
         pkg.contains("mms", true) || pkg.contains("sms", true)
@@ -95,12 +148,20 @@ object CaptureFilters {
     fun isChatApp(pkg: String): Boolean = chatPackages.contains(pkg) ||
         pkg.contains("mobileqq", true) || pkg.contains("tim", true) || pkg.contains("wework", true)
 
+    /**
+     * 支付类 App。
+     * 注意：早期版本用 `contains("pay")` / `contains("wallet")` 兜底，匹配面太宽
+     * （任何名字里带 pay 的 App、甚至壁纸类都会命中），现在改成显式语料 + 银行关键词。
+     */
     fun isPaymentApp(pkg: String): Boolean {
         if (isChatApp(pkg)) return false
-        return paymentPackages.contains(pkg) ||
-            pkg.contains("bank", true) || pkg.contains("alipay", true) || pkg.contains("wallet", true) ||
-            pkg.contains("icbc", true) || pkg.contains("cmb", true) || pkg.contains("ccb", true) ||
-            pkg.contains("pay", true)
+        if (paymentPackages.contains(pkg)) return true
+        val p = pkg.lowercase()
+        return p.contains("bank") || p.contains("alipay") || p.contains("unionpay") ||
+            p.contains("icbc") || p.contains("cmb") || p.contains("ccb") || p.contains("boc") ||
+            p.contains("abchina") || p.contains("spdb") || p.contains("citic") ||
+            p.contains("cmbc") || p.contains("cebbank") || p.contains("psbc") ||
+            p.contains("bankcomm") || p.contains("wallet")
     }
 
     /**
@@ -114,37 +175,91 @@ object CaptureFilters {
         "交易金额", "实付", "缴费", "还款", "提现"
     )
 
+    /** 文本里「带单位的金额」出现几次（列表页一般 ≥3） */
+    fun amountCount(text: String): Int = AMOUNT_WITH_UNIT.findAll(text).count()
+
+    /** 账单列表页 / 明细页：一屏里出现多笔金额，绝不是「一条交易通知」 */
+    fun looksLikeStatementList(text: String): Boolean = amountCount(text) >= 3
+
+    /** 有结构证据？没有就说明只是「一句带金额的话」，最多进待确认 */
+    fun hasTxnEvidence(text: String): Boolean = TXN_EVIDENCE.any { text.contains(it) }
+
+    /** 命中「非动账模板」（账单/额度/营销） */
+    fun isNonTxnNotice(text: String): Boolean = NON_TXN_MARKERS.any { text.contains(it) }
+
+    /** 营销/推广渠道 */
+    fun isMarketingChannel(channelId: String?, channelName: String?): Boolean {
+        val s = listOfNotNull(channelId, channelName).joinToString(" ").lowercase()
+        if (s.isBlank()) return false
+        return MARKETING_CHANNELS.any { s.contains(it.lowercase()) }
+    }
+
+    /** 是否是「支付结果页」文案（读屏只信这个） */
+    fun isPaymentResultPage(text: String): Boolean =
+        text.length <= 260 && RESULT_PAGE_MARKERS.any { text.contains(it) }
+
     /**
      * @return true 表示值得解析
      * @param title 通知标题：聊天类 App 靠它区分「群消息」和「支付通知」
+     * @param channelId / channelName 通知渠道（银行 App 的营销推送单独占渠道，是强信号）
      */
-    fun shouldRead(pkg: String, text: String, title: String = ""): Boolean {
+    fun shouldRead(
+        pkg: String,
+        text: String,
+        title: String = "",
+        channelId: String? = null,
+        channelName: String? = null
+    ): Boolean {
         if (text.length < 6) return false
         if (ParseEngine.isJunk(text)) return false
-        val hasMoney = text.contains('元') || text.contains('¥') || text.contains('￥')
 
-        // 【广告闸门】营销词 + 无动账证据 → 直接丢掉。
-        // 招商银行推的「4元水电券」就是这种，不能被当成 4 元支出。
+        // 【渠道闸门】营销渠道直接丢
+        if (isMarketingChannel(channelId, channelName)) return false
+
+        val hasMoney = text.contains('元') || text.contains('¥') || text.contains('￥') ||
+            text.contains("人民币")
+        // 红包/转账卡片可能只有「[微信红包]」没有金额：放行给解析引擎，解析不出金额自然不会记账
+        val transferCard = isChatApp(pkg) && TRANSFER_MARKERS.any { text.contains(it) }
+        if (!hasMoney && !transferCard) {
+            return false
+        }
+
+        // 【广告闸门】营销词 + 无动账证据 → 丢掉
         val adLike = AD_MARKERS.any { text.contains(it) || title.contains(it) }
         val payEvidence = PAY_EVIDENCE.any { text.contains(it) }
         if (adLike && !payEvidence) return false
 
-        // 短信：银行动账短信基本都带金额
-        if (isSmsApp(pkg)) return hasMoney || STRONG_HINTS.any { text.contains(it) }
+        // 【非动账模板】账单提醒 / 额度调整 / 营销：即使带「消费」「还款」也不记账
+        if (isNonTxnNotice(text)) return false
 
-        // 聊天类（微信/QQ/钉钉/飞书…）分两种情况：
+        // 【列表页闸门】滑动账单页会在一次事件里塞进好几笔金额 → 整段丢弃
+        if (looksLikeStatementList(text)) return false
+
+        // 短信：银行动账短信基本都带金额，最可靠，放行
+        if (isSmsApp(pkg)) return true
+
+        // 聊天类（微信/QQ/钉钉/飞书…）：
         // ① 标题是「微信支付 / QQ钱包 / 招商银行」→ 真支付通知
-        // ② 标题是人名/群名，但正文是「[转账]100.00元」「[微信红包]」这类钱卡片 → 也可信
-        // ③ 标题是人名/群名，正文却是银行短信句式 → 是群里转发的文本，必须丢弃
+        // ② 标题是人名/群名，正文是「[转账]100.00元」这类钱卡片 → 也可信
+        // ③ 标题是人名/群名，正文却是银行短信句式 → 群里转发的文本，必须丢弃
         if (isChatApp(pkg)) {
             val titleOk = PAY_SOURCE_MARKERS.any { title.contains(it) }
-            if (titleOk) return hasMoney && STRONG_HINTS.any { text.contains(it) }
+            if (titleOk) return STRONG_HINTS.any { text.contains(it) }
             val transferLike = TRANSFER_MARKERS.any { text.contains(it) }
             val bankLike = BANK_TEXT_MARKERS.any { text.contains(it) }
             return transferLike && !bankLike
         }
 
-        if (isPaymentApp(pkg)) return true
+        // 支付类 / 银行 App：必须「有金额 + 有支付动词 + 有结构证据」
+        // 早期这里是 `return true`，于是「信用卡本期账单 1234.56 元」这类也会进来，
+        // 甚至因为置信度够高被自动入账 —— 这是待确认堆积的主要成因。
+        if (isPaymentApp(pkg)) {
+            val verb = STRONG_HINTS.any { text.contains(it) }
+            if (!verb) return false
+            // 有结构证据（余额/单号/商户/尾号）→ 放行；没有 → 也放行但后面会被置信度封顶进待确认
+            return true
+        }
+
         return hasMoney && STRONG_HINTS.any { text.contains(it) }
     }
 

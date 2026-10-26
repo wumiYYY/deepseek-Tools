@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.capture
+package com.jingyuniang.ledger.capture
 
 import com.jingyuniang.ledger.Services
 import com.jingyuniang.ledger.data.Account
@@ -63,10 +63,16 @@ object CapturePipeline {
 
         val raw = ParseEngine.parse(pkg, appName, full, accounts, categories, rules, merchantRules)
             ?: return null
-        // 聊天类应用（微信/QQ）里偶尔会有「像账单」的转发文本：降权，宁可多问一次也不要记错
-        val parsed = if (pkg != null && CaptureFilters.isChatApp(pkg)) {
-            raw.copy(confidence = (raw.confidence - 20).coerceAtLeast(0))
-        } else raw
+        // 置信度封顶（宁可多问一次，不要错记账）：
+        //   · 读屏（ACCESS）永远不自动入账 → 封顶 79（默认阈值 80）
+        //   · 通知里没有「结构证据」（余额/单号/商户/尾号）→ 也封顶 79
+        //   · 聊天类转发文本再降 20
+        //   · 短信是最可靠的来源，保持原分
+        var conf = raw.confidence
+        if (source == TxnSource.ACCESS) conf = minOf(conf, 79)
+        if (source == TxnSource.NOTIFY && !CaptureFilters.hasTxnEvidence(full)) conf = minOf(conf, 79)
+        if (pkg != null && CaptureFilters.isChatApp(pkg)) conf = (conf - 20).coerceAtLeast(0)
+        val parsed = raw.copy(confidence = conf.coerceIn(0, 99))
         val now = System.currentTimeMillis()
 
         // 1) 抓取去重：同来源 + 同金额，2.5 分钟内只认一次

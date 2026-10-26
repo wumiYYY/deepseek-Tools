@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.ai
+﻿package com.jingyuniang.ledger.ai
 
 import com.jingyuniang.ledger.data.Account
 import com.jingyuniang.ledger.data.Category
@@ -15,10 +15,19 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * DeepSeek 开放平台客户端（用户自己填 API Key，App 内可一键关闭）。
+ * OpenAI 兼容的聊天客户端（用户自己填 Key，App 内可一键关闭）。
+ * 默认指向 DeepSeek 官方；`baseUrl` 可换成任何兼容 `/chat/completions` 的服务
+ * （Kimi / 智谱 / 通义 / OpenRouter / 本地 Ollama 都可以）。
  * 只做三件事：智能分类、一句话记账、月度点评。
  */
-class DeepSeekClient(private val apiKey: String, private val model: String = "deepseek-chat") {
+class DeepSeekClient(
+    private val apiKey: String,
+    private val model: String = "deepseek-chat",
+    baseUrl: String = com.jingyuniang.ledger.data.DEFAULT_API_BASE
+) {
+
+    private val endpoint: String =
+        baseUrl.trim().trimEnd('/').ifBlank { com.jingyuniang.ledger.data.DEFAULT_API_BASE } + "/chat/completions"
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -42,7 +51,7 @@ class DeepSeekClient(private val apiKey: String, private val model: String = "de
                     )
                 }
                 val req = Request.Builder()
-                    .url("https://api.deepseek.com/chat/completions")
+                    .url(endpoint)
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
                     .post(body.toString().toRequestBody("application/json".toMediaType()))
@@ -87,7 +96,7 @@ object AiService {
     private fun client(): DeepSeekClient? {
         val s = com.jingyuniang.ledger.Services.settings.value
         if (!s.aiEnabled || s.apiKey.isBlank()) return null
-        return DeepSeekClient(s.apiKey, s.model)
+        return DeepSeekClient(s.apiKey, s.model, s.apiBase)
     }
 
     suspend fun ask(system: String, user: String, json: Boolean = true): String? {

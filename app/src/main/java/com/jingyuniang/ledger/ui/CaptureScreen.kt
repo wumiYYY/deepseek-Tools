@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.ui
+package com.jingyuniang.ledger.ui
 
 import android.Manifest
 import android.os.Build
@@ -42,6 +42,7 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
 
     var refresh by remember { mutableStateOf(0) }
     var editingCapture by remember { mutableStateOf<Capture?>(null) }
+    var showIgnoreAll by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf("") }
 
     val listenerOn = remember(refresh, settings.captureNotify) { Permissions.isNotificationListenerEnabled(ctx) }
@@ -317,7 +318,19 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                     if (pending.isNotEmpty()) Tag("${pending.size}", p.expense)
                     Spacer(Modifier.weight(1f))
-                    Text("点金额可改分类入账", color = p.sub, fontSize = 10.sp)
+                    if (pending.isNotEmpty()) {
+                        Text(
+                            "全部忽略",
+                            color = p.expense, fontSize = 11.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(p.expense.copy(alpha = 0.12f))
+                                .clickable { showIgnoreAll = true }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    } else {
+                        Text("点金额可改分类入账", color = p.sub, fontSize = 10.sp)
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 if (pending.isEmpty()) {
@@ -395,6 +408,34 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
             onSave = { catId, accId ->
                 vm.confirmCapture(target, catId, accId) { }
                 editingCapture = null
+            }
+        )
+    }
+
+    if (showIgnoreAll) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showIgnoreAll = false },
+            title = { Text("忽略全部待确认？", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "当前 ${pending.size} 条待确认会被标记为「已忽略」，不会写入账本。\n" +
+                        "确认过账的记录和已自动入账的账目不受影响。",
+                    color = p.sub, fontSize = 12.sp, lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showIgnoreAll = false
+                    val n = pending.size
+                    vm.ignoreAllPendingCaptures {
+                        hint = "已忽略 $n 条待确认"
+                    }
+                }) { Text("全部忽略", color = p.expense) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showIgnoreAll = false }) {
+                    Text("取消", color = p.sub)
+                }
             }
         )
     }

@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.ui
+﻿package com.jingyuniang.ledger.ui
 
 import android.app.Application
 import android.net.Uri
@@ -326,6 +326,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onDone()
     }
 
+    /** 一键忽略所有待确认（不动已入账的账目） */
+    fun ignoreAllPendingCaptures(onDone: () -> Unit = {}) = scope.launch {
+        val n = runCatching { repo.ignoreAllPendingCaptures() }.getOrDefault(0)
+        AppLog.d("一键忽略待确认：$n 条")
+        onDone()
+    }
+
     fun undoCapture(capture: Capture) = scope.launch {
         runCatching { com.jingyuniang.ledger.capture.CapturePipeline.undo(capture.id) }
     }
@@ -349,6 +356,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAiEnabled(v: Boolean) = scope.launch { prefs.setAiEnabled(v) }
     fun setApiKey(v: String) = scope.launch { prefs.setApiKey(v) }
     fun setModel(v: String) = scope.launch { prefs.setModel(v) }
+    fun setApiBase(v: String) = scope.launch { prefs.setApiBase(v) }
     fun setReminderEnabled(v: Boolean) = scope.launch { prefs.setReminderEnabled(v) }
     fun setBudgetAlert(v: Boolean) = scope.launch { prefs.setBudgetAlert(v) }
     fun setOnboardingDone() = scope.launch { prefs.setOnboardingDone(true) }

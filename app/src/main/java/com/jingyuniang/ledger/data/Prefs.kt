@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.data
+﻿package com.jingyuniang.ledger.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
@@ -14,11 +14,16 @@ import kotlinx.coroutines.flow.map
 
 private val Context.prefStore: DataStore<Preferences> by preferencesDataStore(name = "whale_settings")
 
+/** 默认接口：DeepSeek 官方（OpenAI 兼容）。换服务商只改 Settings.apiBase。 */
+const val DEFAULT_API_BASE = "https://api.deepseek.com"
+
 data class Settings(
     val ledgerId: Long = 0,
     val aiEnabled: Boolean = true,
     val apiKey: String = "",
     val model: String = "deepseek-chat",
+    /** 接口地址：任何 **OpenAI 兼容** 的 /chat/completions 端点都行（DeepSeek/Kimi/智谱/通义/本地 Ollama…） */
+    val apiBase: String = DEFAULT_API_BASE,
     /** 高置信度自动入账 */
     val autoBook: Boolean = true,
     val autoBookThreshold: Int = 80,
@@ -48,6 +53,7 @@ class Prefs(private val ctx: Context) {
         val aiEnabled = booleanPreferencesKey("ai_enabled")
         val apiKey = stringPreferencesKey("api_key")
         val model = stringPreferencesKey("model")
+        val apiBase = stringPreferencesKey("api_base")
         val autoBook = booleanPreferencesKey("auto_book")
         val threshold = intPreferencesKey("auto_book_threshold")
         val captureNotify = booleanPreferencesKey("capture_notify")
@@ -72,6 +78,7 @@ class Prefs(private val ctx: Context) {
             aiEnabled = p[K.aiEnabled] ?: true,
             apiKey = p[K.apiKey] ?: "",
             model = p[K.model] ?: "deepseek-chat",
+            apiBase = p[K.apiBase] ?: DEFAULT_API_BASE,
             autoBook = p[K.autoBook] ?: true,
             autoBookThreshold = p[K.threshold] ?: 80,
             captureNotify = p[K.captureNotify] ?: true,
@@ -95,6 +102,7 @@ class Prefs(private val ctx: Context) {
     suspend fun setAiEnabled(v: Boolean) = put(K.aiEnabled, v)
     suspend fun setApiKey(v: String) = put(K.apiKey, v)
     suspend fun setModel(v: String) = put(K.model, v)
+    suspend fun setApiBase(v: String) = put(K.apiBase, v)
     suspend fun setAutoBook(v: Boolean) = put(K.autoBook, v)
     suspend fun setThreshold(v: Int) = put(K.threshold, v)
     suspend fun setCaptureNotify(v: Boolean) = put(K.captureNotify, v)

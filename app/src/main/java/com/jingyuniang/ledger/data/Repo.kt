@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.data
+﻿package com.jingyuniang.ledger.data
 
 import com.jingyuniang.ledger.util.Dates
 import kotlinx.coroutines.flow.Flow
@@ -356,6 +356,13 @@ class Repo(val db: AppDatabase) {
     suspend fun pruneCaptures() {
         db.captureDao().prune(System.currentTimeMillis() - 60L * 24 * 3600 * 1000)
     }
+
+    /** 待确认条数（同步查一次，给自检日志用） */
+    suspend fun pendingCapturesCountNow(): Int =
+        db.captureDao().all().count { it.status == com.jingyuniang.ledger.data.CaptureStatus.PENDING }
+
+    /** 一键忽略所有待确认 */
+    suspend fun ignoreAllPendingCaptures(): Int = db.captureDao().ignoreAllPending()
 }
 
 data class BudgetProgress(val budget: Budget, val spentCents: Long) {

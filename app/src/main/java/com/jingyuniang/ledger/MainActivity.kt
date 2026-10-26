@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger
+﻿package com.jingyuniang.ledger
 
 import android.content.Intent
 import android.net.Uri
@@ -267,8 +267,9 @@ class MainActivity : ComponentActivity() {
         com.jingyuniang.ledger.util.AppLog.d(
             "DIAG[$tag] balances=" + bal.entries.joinToString(", ") { "${it.key}:${it.value}" }
         )
-        com.jingyuniang.ledger.util.AppLog.d("DIAG[$tag] txnCount=${txns.size}")
-        txns.takeLast(6).forEach { t ->
+        val pend = runCatching { repo.pendingCapturesCountNow() }.getOrDefault(0)
+        com.jingyuniang.ledger.util.AppLog.d("DIAG[$tag] txnCount=${txns.size} pendingCaptures=$pend")
+        txns.take(6).forEach { t ->   // allTxns() 已按 date DESC 排序，take(6) 才是最近 6 笔
             com.jingyuniang.ledger.util.AppLog.d(
                 "DIAG[$tag] txn#${t.id} ${t.type} ${t.amountCents} acc=${t.accountId} " +
                     "cat=${t.categoryId} src=${t.source} note=${t.note} date=${t.date}"

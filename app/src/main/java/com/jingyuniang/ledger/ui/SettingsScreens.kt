@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.ui
+package com.jingyuniang.ledger.ui
 
 import android.content.Context
 import android.content.Intent
@@ -60,6 +60,7 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var key by remember { mutableStateOf(settings.apiKey) }
     var model by remember { mutableStateOf(settings.model) }
+    var apiBase by remember { mutableStateOf(settings.apiBase) }
     var hint by remember { mutableStateOf("") }
 
     ScreenColumn("AI 设置", onBack) {
@@ -67,11 +68,12 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             Text("🐳 鲸鱼娘的大脑", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Text(
-                "填一个 DeepSeek 开放平台的 API Key，就能用：\n" +
+                "填一个 **OpenAI 兼容** 接口的 Key 就能用：\n" +
                     "· 一句话记账（「昨天午饭 25 微信」）\n" +
                     "· 通知账单智能分类\n" +
                     "· 每月消费点评（鲸鱼娘月报）\n\n" +
-                    "不填也能用 —— 所有识别都会退回本地规则，完全离线。Key 只存在本机，请求直连 api.deepseek.com。",
+                    "默认 DeepSeek 官方；也可以换成 Kimi / 智谱 / 通义 / OpenRouter / 本地 Ollama（改下面的「接口地址」即可）。\n" +
+                    "不填也能用 —— 所有识别都会退回本地规则，完全离线。Key 只存在本机。",
                 color = p.sub, fontSize = 11.sp, lineHeight = 18.sp
             )
         }
@@ -88,15 +90,24 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             OutlinedTextField(
                 value = key,
                 onValueChange = { key = it },
-                label = { Text("DeepSeek API Key") },
+                label = { Text("API Key") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation()
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
+                value = apiBase,
+                onValueChange = { apiBase = it },
+                label = { Text("接口地址（OpenAI 兼容）") },
+                placeholder = { Text("https://api.deepseek.com") },
+                singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
                 value = model,
                 onValueChange = { model = it },
-                label = { Text("模型（deepseek-chat / deepseek-reasoner）") },
+                label = { Text("模型名") },
+                placeholder = { Text("deepseek-chat / deepseek-reasoner") },
                 singleLine = true
             )
             Spacer(Modifier.height(10.dp))
@@ -108,6 +119,7 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                         .background(p.primary)
                         .clickable {
                             vm.setApiKey(key.trim())
+                            vm.setApiBase(apiBase.trim().ifBlank { com.jingyuniang.ledger.data.DEFAULT_API_BASE })
                             vm.setModel(model.trim().ifBlank { "deepseek-chat" })
                             vm.setAiEnabled(true)
                             hint = "已保存，正在测试…"
@@ -178,6 +190,20 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
             askPassword = "restore"
         }
     }
+    // 备份另存（ACTION_CREATE_DOCUMENT）：可直接存到下载目录/网盘，换手机时带走
+    val saveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val src = shareTarget
+        if (uri == null || src == null) return@rememberLauncherForActivityResult
+        val ok = runCatching {
+            ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                src.inputStream().use { it.copyTo(out) }
+            } != null
+        }.getOrDefault(false)
+        hint = if (ok) "已保存到所选位置 ✅（换机时把它带到新手机，再用「从备份恢复」）"
+        else "保存失败，试试「分享这个文件」"
+    }
 
     ScreenColumn("数据导入导出", onBack) {
         WhaleCard {
@@ -234,6 +260,13 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
                 if (shareTarget != null) {
                     Spacer(Modifier.height(8.dp))
                     ActionButton("分享这个文件") { shareFile(ctx, shareTarget!!) }
+                    Spacer(Modifier.height(8.dp))
+                    // 换手机的关键一步：直接把备份另存到「下载/网盘/微信文件」，不用先分享再翻
+                    ActionButton("另存到文件 / 云盘（换手机用这个）") {
+                        runCatching {
+                            saveLauncher.launch((shareTarget?.name ?: "鲸鱼娘备份.whalebk"))
+                        }.onFailure { hint = "这台设备没有文件保存器" }
+                    }
                 }
             }
         }
