@@ -51,7 +51,7 @@ object ParseEngine {
     )
 
     private val INCOME_WORDS = listOf(
-        "退款", "退货", "返现", "入账", "到账", "收入", "收款成功", "收到", "工资", "薪资", "请收款", "已收款", "转账给你", "向你转账", "收到一笔",
+        "退款", "退货", "返现", "入账", "向您转账", "转账给您", "到账", "收入", "收款成功", "收到", "工资", "薪资", "请收款", "已收款", "转账给你", "向你转账", "收到一笔",
         "报销", "转入", "存入", "红包收入", "利息", "分红", "收益", "奖励金"
     )
 
@@ -175,12 +175,17 @@ object ParseEngine {
     /** 金额前面的「付费动词」：命中说明这个数字是这笔交易的主角 */
     private val STRONG_BEFORE = listOf(
         "消费", "支出", "支付", "付款", "扣款", "交易金额", "金额", "实付",
-        "转账", "入账", "到账", "收入", "退款", "收款", "缴费", "存入", "转出", "转入"
+        "转账", "入账", "到账", "收入", "退款", "收款", "缴费", "存入", "转出", "转入",
+        // 银行短信里的常见动词（漏一个，那条短信的金额就可能抓成 0）
+        "取现", "取款", "年费", "保费", "手续费", "申购", "赎回", "扣收", "扣除", "收取",
+        "还款", "工资", "报销", "赞赏", "退回", "待缴", "应缴", "支出金额"
     )
     private val CURRENCY_BEFORE = listOf("人民币", "¥", "￥")
     private val NEG_BEFORE = listOf(
         "余额", "额度", "可用", "剩余", "积分", "优惠", "立减", "抵扣",
-        "满减", "折扣", "减免", "券", "限额", "冻结"
+        "满减", "折扣", "减免", "券", "限额", "冻结",
+        // 编号类：这些词后面的长数字是单号，不是金额
+        "保单号", "订单号", "流水号", "交易单号", "编号", "凭证号", "工号", "卡号"
     )
     private val NEG_AFTER = listOf("余额", "额度", "可用", "剩余", "积分")
 
@@ -222,11 +227,22 @@ object ParseEngine {
             else if (after.contains("元") || after.contains("块")) score += 2
             // 规格/材质单位：商品标题里的「925银」「18K金」「5000mAh」「6.7英寸」不是金额
             if (SPEC_UNIT_AFTER.any { afterTrim.startsWith(it) }) score -= 30
-            if (NEG_BEFORE.any { before.contains(it) }) score -= 20
-            if (before.contains("尾号") || before.endsWith("尾")) score -= 6
+            // 「余额/额度」降权：但「余额宝」「余额+」这类产品名不算（否则转入余额宝的金额永远抓不到）
+            val beforeForNeg = before.replace("余额宝", "").replace("余额+", "")
+            if (NEG_BEFORE.any { beforeForNeg.contains(it) }) score -= 20
+            // 卡尾号降权：只在这个数字**紧邻**「尾号」时才降权（数字本身就是卡号），
+            // 不能因为「尾号8888账户取现 500.00」里窗口含「尾号」就把 500 也降权
+            val beforeTrimmed = before.trimEnd()
+            val tailAdjacent = beforeTrimmed.endsWith("尾号") || beforeTrimmed.endsWith("尾") ||
+                Regex("""(?:尾号|卡号|账户|账号)[:：]?\s*$""").containsMatchIn(beforeTrimmed)
+            if (tailAdjacent) score -= 6
             if (before.any { it == ':' || it == '：' || it == '-' || it == '/' } ||
                 before.contains("年") || before.contains("月") || before.contains("日")
             ) score -= 3
+            // 字母+数字的编号（保单号 PA123456 / 订单 SF12345678）：紧邻 ASCII 字母的数字不是金额。
+            // 注意不能用 isLetter()：中文字符也算 letter，会把所有中文短信的金额全跳过。
+            val prev = if (start > 0) norm[start - 1] else ' '
+            if (prev in 'A'..'Z' || prev in 'a'..'z') return@forEach
             cands.add(Cand(cents, score, start))
         }
         // 没有阿拉伯数字时兜底认中文金额（「十块钱」「二十五元」）
@@ -256,7 +272,7 @@ object ParseEngine {
     fun detectDirection(text: String): TxnType {
         // 强信号优先：渠道名里的「支付」（如"微信支付收款到账"）不该把收入判成支出
         val incStrong = listOf(
-            "收款到账", "到账", "收到", "入账", "退款", "工资", "报销", "转入", "存入", "收益", "返现"
+            "收款到账", "到账", "收到", "入账", "退款", "工资", "报销", "转入", "存入", "收益", "返现", "退回"
         ).count { text.contains(it) }
         val expStrong = listOf(
             "支付成功", "已支付", "付款成功", "已付款", "付款", "消费", "扣款", "支出", "缴费", "转出", "提现"
