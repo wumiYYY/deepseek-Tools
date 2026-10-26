@@ -1,4 +1,7 @@
-﻿# 🐳 鲸鱼娘金库
+﻿> **想参与开发？** 看 [CONTRIBUTING.md](CONTRIBUTING.md)：环境、改规则、测试、分支、签名、发版全在里面。
+> **只想用？** 看 [docs/用户指引.md](docs/用户指引.md)。
+> **许可证**：代码 MIT，角色素材 CC BY-NC-SA 4.0（禁止商用）→ [LICENSE](LICENSE)
+# 🐳 鲸鱼娘金库
 
 > 一个把「自动抓账单」做到底的安卓记账 App。Kotlin + Jetpack Compose，**纯本地存储、无账号、无广告 SDK**。
 >

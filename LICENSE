@@ -1,0 +1,44 @@
+MIT License
+
+Copyright (c) 2026 wumiYYY
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 重要例外：美术素材不适用 MIT
+
+**上面的 MIT 许可只覆盖代码与文档。**
+
+仓库内的角色立绘与相关图像（`docs/art/`、`docs/*.png` 中的角色图片，以及随 APK 打包的
+`res/drawable*` 里的角色美术）来自第三方，**不属于本项目的代码许可范围**：
+
+- 角色立绘：深海女仆工坊皮肤 —— **CC BY-NC-SA 4.0**
+  （原作者 @上善 → @ZipZipPipe → @Small-tailqwq；https://github.com/Small-tailqwq/BlueBigFish）
+- 「蓝色大肥鱼」存档：版权归原作者所有
+
+因此：
+
+1. 你可以自由使用、修改、分发**代码**（包括商用，如果素材被移除/替换）；
+2. **不得**将本项目收录的任何美术素材用于**商业用途**（含应用商店上架、付费分发、
+   带广告的发行版等）；
+3. 使用/再分发美术素材时必须保留署名，并以相同方式共享（CC BY-NC-SA 4.0）；
+4. 若你要做商业发行，请**先移除或替换**全部第三方美术素材。
+
+详见 README「素材授权」一节。
