@@ -113,8 +113,12 @@ object CapturePipeline {
         // 信用卡还款 = 资金转移（储蓄卡 → 信用卡），不是消费：
         // 记成 TRANSFER 不污染收支统计，但保留流水、且两端账户余额都会正确变化。
         // 没有信用卡账户时无法组成「A → B」，丢弃并留一句原因（用户能理解为什么没记）。
-        val repayment = CaptureFilters.isFundTransfer(full)
-        if (repayment) {
+        // 资金转移（还款 / 提现 / 取现 / 理财申购赎回）记成 TRANSFER：不计收支，但保留流水。
+        // 只有「信用卡还款」必须有信用卡账户才能组成 A→B；取现/理财没有目标账户时按**单边转移**记
+        // （来源账户减少，目标留空），否则会把真实的取现/申购直接丢了（真机踩过）。
+        val fundTransfer = CaptureFilters.isFundTransfer(full)
+        val isRepayment = CaptureFilters.isRepayment(full)
+        if (isRepayment) {
             val credit = accounts.firstOrNull { it.type == com.jingyuniang.ledger.data.AccountType.CREDIT }
             if (credit == null) {
                 AppLog.i("跳过信用卡还款（未建信用卡账户，无法记成转账）：${raw.amountCents} 分")
@@ -123,7 +127,7 @@ object CapturePipeline {
         }
         val parsed = raw.copy(
             confidence = effectiveConfidence(source, pkg, title, full, raw.confidence),
-            direction = if (repayment) TxnType.TRANSFER else raw.direction
+            direction = if (fundTransfer) TxnType.TRANSFER else raw.direction
         )
         val now = System.currentTimeMillis()
 

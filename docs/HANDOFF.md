@@ -7,7 +7,7 @@
 ## 0. 一句话现状
 
 Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），核心是**自动记账**（通知/短信抓取 + AI 一句话记账），UI 是二次元深蓝+鎏金女仆风。
-**当前版本 v1.2.7（versionCode 10207）**，产物 `dist/1.2.7/鲸鱼娘金库-v1.2.7.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
+**当前版本 v1.2.8（versionCode 10208）**，产物 `dist/1.2.8/鲸鱼娘金库-v1.2.8.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
 **抓取规则【定版】见 `docs/CAPTURE_RULES_V1.md`**（8 道闸门 + 447 条规则 + 测试覆盖）；外部参考对照见 `docs/CAPTURE_RULES.md`
 发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`，**给使用者的说明书是 `docs/用户指引.md`**（`release.ps1` 会自动把它放进 `dist/<版本>/`）。
 代码已入 git 并推到 `https://github.com/wumiYYY/deepseek-Tools`（`main` + tag `v1.2.0`）。
