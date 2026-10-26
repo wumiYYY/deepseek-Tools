@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   unit-test:
-    name: 单元测试（108 个）
+    name: 单元测试（120 个）
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -26,16 +26,29 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # ⚠️ 必须是 v4：v3 会去下载 Google 已经下架的旧 cmdline-tools 包，
+      # 直接 404 秒挂（v4.0.2 的更新说明就是 "Fix for removed tools package"）。
       - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: 安装 SDK 平台与构建工具
         run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           yes | sdkmanager --licenses > /dev/null || true
 
+      # 同理：gradle/actions 已经到 v6，v3 是两年前的东西。
       - name: 配置 Gradle 缓存
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
+
+      # 先把环境打出来：下次再挂，日志里直接能看出是 SDK / JDK / 依赖哪一层的问题，
+      # 不用靠"猜 + 截图问我"。
+      - name: 环境自检
+        run: |
+          chmod +x gradlew
+          java -version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          ./gradlew --version
 
       - name: 跑单元测试
         run: |
