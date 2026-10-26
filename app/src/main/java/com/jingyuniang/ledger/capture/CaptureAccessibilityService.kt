@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.capture
+﻿package com.jingyuniang.ledger.capture
 
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
  * 一屏账单明细就是一堆「支付 25.00」，于是每滑一屏就可能多出一条账。
  *
  * 现在的策略（宁可漏，不可错）：
- * 1) 只处理 `TYPE_WINDOW_STATE_CHANGED`（页面切换），彻底忽略内容变化/滚动；
+ * 1) 只处理 `TYPE_WINDOW_STATE_CHANGED`（页面切换），彻底忽略内容变化/滚动；`n *    并且只对支付通道类 App 生效（抖音/淘宝等刷内容时根本不读）；
  * 2) 窗口文本必须命中「支付成功 / 付款成功 / 交易成功…」这类**结果页文案**；
  * 3) 文本长度 > 260 字直接放弃（结果页都很短，账单列表页都很长）；
  * 4) 同 App 冷却 10 秒 + 文本 hash 去重；
@@ -35,7 +35,8 @@ class CaptureAccessibilityService : AccessibilityService() {
         // 应用内开关可以一键关掉，省电（系统里仍开着也不会再读屏）
         if (!Services.settings.value.captureAccess) return
         val pkg = e.packageName?.toString() ?: return
-        if (!CaptureFilters.isPaymentApp(pkg)) return
+        // 只对「支付通道」（微信/支付宝/银行/云闪付）读屏；电商、短视频一律不读
+        if (!CaptureFilters.isPayRail(pkg)) return
 
         val now = System.currentTimeMillis()
         val last = lastByPkg[pkg] ?: 0L

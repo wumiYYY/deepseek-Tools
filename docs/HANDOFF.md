@@ -7,7 +7,7 @@
 ## 0. 一句话现状
 
 Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），核心是**自动记账**（通知/短信抓取 + AI 一句话记账），UI 是二次元深蓝+鎏金女仆风。
-**当前版本 v1.2.1（versionCode 10201）**，产物 `dist/1.2.1/鲸鱼娘金库-v1.2.1.apk`（24.5 MB，只含 arm64-v8a），手机已装机（用户的真实账本 28 笔，别乱清）。
+**当前版本 v1.2.2（versionCode 10202）**，产物 `dist/1.2.2/鲸鱼娘金库-v1.2.2.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
 发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`，**给使用者的说明书是 `docs/用户指引.md`**（`release.ps1` 会自动把它放进 `dist/<版本>/`）。
 代码已入 git 并推到 `https://github.com/wumiYYY/deepseek-Tools`（`main` + tag `v1.2.0`）。
 本轮修完：**P0-3 AI 记账真写库 ✅**、**更新余额面板第 1 刀（手动输入）✅**、**第 2 刀（截图 OCR + 认账户）✅**；
@@ -62,7 +62,11 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 > `ocrbal:<图片uri>` = 走真实 OCR → BalanceParser → 猜账户 → 校准（等价于截图识别里点「校准」）；
 > `capture:<0|1|2>` = 把示例通知喂进真实抓取流水线；`backup:<密码>` = 加密备份；
 > `restorefile:latest:<密码>` = 恢复最新一份备份（备份文件名带中文，adb 传参会丢字节，所以用 `latest`）；
-> `dump` = 打印账户 + 余额 + 最近 6 笔；`del:<txnId>` = 删测试数据。
+> `dump` = 打印账户 + 余额 + 最近 6 笔 + 待确认数；`del:<txnId>` = 删测试数据；
+> `settings` = 打印关键配置（Key 只打掩码）用于**升级前后比对配置是否保留**；
+> `probe:<pkg>#<title>#<原文>` = **规则体检**：把任意通知原文喂进抓取闸门，日志输出
+> `kind/junk/nonTxn/listPage/evidence/shouldRead/extractAmount`，只判定不写库。
+> ⚠️ probe 的分隔符用 `#`：adb shell 会把 `|` 当管道、空格当参数拆分，都会截断（踩过）。
 > ⚠️ extra 里**别带空格**（adb 会二次拆分，`"book:午饭 25"` 会变成 `pkg=25`）。
 > ⚠️ 自检入口只认 adb shell（uid 2000）/ root 发的指令（`MainActivity` 是 exported，不设门槛任何 App 都能用 Intent 改账本）。
 > 实测 MIUI 上 `launchedFromUid` 常给 `-1`，所以判定是「**拿得到真实 uid 且不是 shell/root** 才拒绝」。
@@ -128,6 +132,9 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 | 54 个单元测试（8 BillImporter + 19 CaptureFilters + 16 ParseEngine + 11 BalanceParser） | `testDebugUnitTest` 全绿 0 失败 |
 | **升级不丢数据（v1.2.0 → v1.2.1）** | 覆盖安装前后 `txnCount=31`、`balances=1:0, 2:-121210, 3:123456` 一字不差；versionCode 10200→10201 |
 | **抓取准确率（v1.2.1 规则）** | 读屏只在页面切换+结果页触发；账单提醒/额度/营销渠道拦掉；≥3 笔金额判列表页；通知无结构证据与所有读屏来源置信度封顶 79 |
+| **抓取按 App 性质分级（v1.2.2）** | 真机 probe：抖音「9.9元包邮」拦 / 抖音「支付成功 ¥12.90」抓 / 淘宝「925银」拦且金额=0 / 京东「订单支付成功 199」抓 / 招行「本期账单」拦 / 招行真实消费 87.13 抓 / 微信「已扣费¥2.00」抓 |
+| **抓取黑名单** | 点待确认行 🚫 → 日志 `加入抓取黑名单：cmb.pb|` → `blocklist=1` → 页面出现「已屏蔽的来源」→「全部恢复」后归 0（测试后已恢复，别留） |
+| **升级保留配置（v1.2.1→v1.2.2）** | `DIAG settings aiEnabled=true model=sc-deepseek-flash apiBase=https://litellm.southchips.net/ key=len=25 …` 升级前后一致；`txnCount=28`、余额不变 |
 | **待确认「全部忽略」** | 真机点按：`一键忽略待确认：11 条` → `pendingCaptures=0`，`txnCount` 仍 31（账目未受影响） |
 | **全新安装（模拟发给使用者）的第一次体验** | 装了 debug 变体（`com.jingyuniang.vault.debug`，独立包名，不碰正式包数据）：首装引导 3 页 → 点「去开启权限」直接落到权限向导（4 项 + 无障碍可选 + 5 家厂商自启动路径）；首次种子数据正确（`accounts=1:现金, 2:微信*, 3:支付宝, 4:银行卡, 5:信用卡`，0 笔流水）。截图：`docs/v_guide_onboarding2/3.png`、`docs/v_guide_permission.png` |
 | **随包使用说明** | `docs/用户指引.md` 由 `release.ps1` 自动落到 `dist/<版本>/使用说明.txt(.md)`（txt 带 BOM）；`release.ps1 -GuideOnly` 可只更新说明、不动 APK 的 sha256 |
@@ -136,8 +143,8 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 
 ## 4. 未完成（按优先级，含已定位的实现细节）
 
-### 抓取准确率 · 第二轮（v1.2.1 后仍有待打磨）
-已经做了：结果页判定、非动账模板、通知渠道过滤、列表页丢弃、置信度封顶、一键忽略。
+### 抓取准确率 · 第三轮（v1.2.2 后剩下的）
+已经做了（v1.2.1 + v1.2.2）：结果页判定、非动账模板、通知渠道过滤、列表页丢弃、置信度封顶、一键忽略、按 App 性质分级（支付通道/电商/内容）、规格单位排除、黑名单、probe 体检。
 还可以做（按收益排序）：
 1. **「别抓这个 App / 这条」黑名单**：待确认行上加「以后别再抓」，写进新表或 AutoRule(反向)，命中直接丢；
 2. **按包名 + 渠道的统计面板**：抓取记录里显示「某银行 3 天抓了 40 条，其中 2 条确认入账 → 建议关掉它的通知抓取」；

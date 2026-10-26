@@ -326,6 +326,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onDone()
     }
 
+    /** 加入抓取黑名单（`pkg|keyword`，见 CaptureBlocklist） */
+    fun blockCaptureSource(entry: String) = scope.launch {
+        AppLog.d("加入抓取黑名单：$entry")
+        runCatching { prefs.addCaptureBlock(entry) }
+    }
+
+    fun unblockCaptureSource(entry: String) = scope.launch {
+        runCatching { prefs.removeCaptureBlock(entry) }
+    }
+
+    fun clearCaptureBlocks() = scope.launch { runCatching { prefs.clearCaptureBlocks() } }
+
     /** 一键忽略所有待确认（不动已入账的账目） */
     fun ignoreAllPendingCaptures(onDone: () -> Unit = {}) = scope.launch {
         val n = runCatching { repo.ignoreAllPendingCaptures() }.getOrDefault(0)

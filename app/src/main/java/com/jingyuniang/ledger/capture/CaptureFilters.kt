@@ -1,23 +1,32 @@
-package com.jingyuniang.ledger.capture
+﻿package com.jingyuniang.ledger.capture
 
 /**
  * 判断一条通知 / 一段页面文字值不值得交给解析引擎。
  *
- * 设计原则（业界侧载记账 App 的共识，没有官方标准，但踩过的坑高度一致）：
- * 1) **来源分级**：短信 > 银行/支付 App 的交易通知 > 读屏；越靠后越不可信。
- * 2) **结构证据**：一笔「刚发生的交易」一定有结构化痕迹（余额/交易单号/商户/尾号/交易时间），
- *    而营销推送、账单提醒只有金额。**只有金额 → 一律不当交易**。
- * 3) **非动账模板**：本期账单、还款提醒、额度调整、优惠券…… 命中即丢（它们全都带金额）。
- * 4) **列表页识别**：账单页/明细列表一屏里会出现很多金额，出现 ≥3 笔金额就判为列表页，整段丢弃
- *    （这条专治「滑动账单页被逐个抓」）。
- * 5) **渠道过滤**：银行 App 的营销推送通常在独立的通知渠道（营销/活动/推荐），按渠道名直接丢。
- * 6) 宁可少记，不要错记：拿不准就让置信度封顶、进「待确认」让用户点头。
+ * ## 为什么要区分 App 类型（真机反馈驱动）
+ * 早期实现把所有「可能付钱」的 App 塞进一个白名单，然后对白名单里的 App 无条件放行
+ * （`if (isPaymentApp(pkg)) return true`）。结果：
+ * - 淘宝的商品推荐「925银精炼镶嵌」被抠成 925 元；
+ * - 抖音/快手刷视频时的「9.9元包邮」「直播间3元券」被当成支出，待确认成堆；
+ * - 银行 App 的「本期账单 1234.56 元」也进账。
+ *
+ * 现在按**通知的性质**分三类，各用不同门槛：
+ *
+ * | 类型 | 例子 | 通知里「钱」的占比 | 门槛 |
+ * |---|---|---|---|
+ * | 支付通道 `PAY_RAIL` | 微信支付、支付宝、云闪付、各行 App | 高 | 有金额 + 支付动词 + 结构证据（余额/单号/商户/尾号） |
+ * | 电商/本地生活 `COMMERCE` | 淘宝、京东、拼多多、美团、饿了么、滴滴 | 低（多数是营销） | 必须命中**强支付模板**（支付成功/已付款/订单支付成功…） |
+ * | 内容/短视频 `CONTENT` | 抖音、快手、小红书、微博、B站、爱奇艺、优酷 | 极低（几乎全是内容推荐） | 同上，且默认不读屏 |
+ * | 其他 | — | — | 金额 + 支付动词 |
+ *
+ * 另外还有四道闸门：渠道过滤（营销渠道直接丢）、非动账模板（账单/额度/营销）、
+ * 账单列表页（≥3 笔金额）、聊天类转发识别。
  */
 object CaptureFilters {
 
-    /** 已知的支付类应用包名 */
-    val paymentPackages = setOf(
-        "com.tencent.mm",                       // 微信
+    /** 真正的「钱的路由」：微信支付 / 支付宝 / 云闪付 / 银行 App / 数字人民币 */
+    val PAY_RAIL_PACKAGES = setOf(
+        "com.tencent.mm",                       // 微信（走聊天类特殊判定）
         "com.eg.android.AlipayGphone",          // 支付宝
         "com.unionpay",                         // 云闪付
         "com.unionpay.tsmservice",              // 云闪付组件
@@ -34,14 +43,46 @@ object CaptureFilters {
         "com.cebbank.mobile.cemb",              // 光大
         "com.pingan.paces.ccms",                // 平安
         "com.cib.xyk",                          // 兴业
-        "com.jd.jrapp",                         // 京东金融
-        "com.sankuai.meituan",                  // 美团
-        "com.sdu.didi.psnger",                  // 滴滴
-        "com.taobao.taobao",                    // 淘宝
-        "com.xunmeng.pinduoduo",                // 拼多多
-        "com.ss.android.ugc.aweme",             // 抖音
+        "com.jd.jrapp",                         // 京东金融（钱包）
         "com.ecny.noemie.pay"                   // 数字人民币
     )
+
+    /**
+     * 电商 / 本地生活：这些 App 的通知绝大多数是营销推送，
+     * 只有「支付成功 / 已付款 / 订单支付成功」这类模板才可能是真动账。
+     */
+    val COMMERCE_PACKAGES = setOf(
+        "com.taobao.taobao", "com.tmall.wireless",          // 淘宝 / 天猫
+        "com.jingdong.app.mall", "com.jd.jrapp",            // 京东
+        "com.xunmeng.pinduoduo",                            // 拼多多
+        "com.taobao.idlefish",                              // 闲鱼
+        "com.sankuai.meituan", "com.sankuai.meituan.takeoutnew", // 美团
+        "me.ele",                                           // 饿了么
+        "com.sdu.didi.psnger", "com.sdu.didi.gsui",         // 滴滴
+        "com.shizhuang.duapp", "com.vipshop.app",           // 得物 / 唯品会
+        "com.taobao.litetao", "com.jd.jm",                  // 淘特 / 京喜
+        "com.achievo.vipshop", "com.zhenai.dating"          // 兼容部分渠道包名（保守）
+    )
+
+    /**
+     * 内容 / 短视频 / 长视频 / 社区：刷这些 App 时通知基本全是内容推荐，
+     * **默认不抓**（只有命中强支付模板才放行），并且**不做读屏**。
+     */
+    val CONTENT_PACKAGES = setOf(
+        "com.ss.android.ugc.aweme",             // 抖音
+        "com.ss.android.ugc.aweme.lite",        // 抖音极速版
+        "com.smile.gifmaker", "com.kuaishou.nebula", // 快手 / 极速版
+        "com.xingin.xhs",                       // 小红书
+        "com.sina.weibo",                       // 微博
+        "tv.danmaku.bili", "com.bilibili.app.in", // B 站
+        "com.tencent.qqlive", "com.qiyi.video", "com.youku.phone", // 长视频
+        "com.google.android.youtube",           // YouTube
+        "com.dragon.read", "com.ss.android.article.news", // 番茄小说 / 今日头条
+        "com.zhihu.android"                     // 知乎
+    )
+
+    /** 兼容旧调用：曾经「可能付钱」的 App 合集 = 支付通道 + 电商 */
+    val paymentPackages: Set<String> get() = PAY_RAIL_PACKAGES + COMMERCE_PACKAGES
 
     /** 短信类应用 */
     private val smsPackages = listOf(
@@ -92,7 +133,9 @@ object CaptureFilters {
         "券", "劵", "立减", "满减", "满赠", "优惠", "特惠", "福利", "领取", "免费领",
         "抽奖", "活动", "限时", "到手价", "红包雨", "积分兑换", "权益", "专享", "专属",
         "分期", "提额", "额度提升", "推荐", "最高可", "最高立减", "先领", "抢购",
-        "会员日", "补贴", "抵用", "抵扣", "礼包", "秒杀", "申请办卡"
+        "会员日", "补贴", "抵用", "抵扣", "礼包", "秒杀", "申请办卡",
+        // 内容/电商推送常见
+        "包邮", "直降", "上新", "直播间", "加购", "收藏", "关注我", "爆款", "清仓", "百亿补贴"
     )
 
     /**
@@ -108,13 +151,26 @@ object CaptureFilters {
         // 营销/运营类
         "优惠券", "立减", "满减", "活动", "抽奖", "签到", "积分", "权益", "福利",
         "推荐", "开通", "申请", "邀请", "回馈", "首绑", "办卡", "加油券", "立享",
-        "限时", "特惠", "领券", "领取", "秒杀", "抢购", "升级有礼"
+        "限时", "特惠", "领券", "领取", "秒杀", "抢购", "升级有礼",
+        // 电商/内容推送
+        "包邮", "直降", "上新", "直播间", "猜你喜欢", "为你推荐", "浏览", "收藏", "加购",
+        "订单已发货", "已发货", "待收货", "物流"
     )
 
     /** 真正的动账证据：有这些词才可能是账单，没有就是广告 */
     private val PAY_EVIDENCE = listOf(
         "消费", "支出", "扣款", "支付成功", "已付款", "已扣", "存入",
         "转入", "转账", "还款", "退款", "提现", "工资", "利息", "结息", "缴费成功"
+    )
+
+    /**
+     * 强支付模板：**电商/内容类 App 只有命中这些**才可能是真动账。
+     * 注意不含单独的「支付」「付款」（"支持花呗付款"这种营销会误命中）。
+     */
+    private val STRICT_PAY_TEMPLATE = listOf(
+        "支付成功", "付款成功", "支付完成", "付款完成", "交易成功", "交易已完成",
+        "已支付", "已付款", "扣款成功", "订单支付成功", "退款到账", "已退款", "收款到账",
+        "付款给", "你已成功付款"
     )
 
     /**
@@ -148,14 +204,10 @@ object CaptureFilters {
     fun isChatApp(pkg: String): Boolean = chatPackages.contains(pkg) ||
         pkg.contains("mobileqq", true) || pkg.contains("tim", true) || pkg.contains("wework", true)
 
-    /**
-     * 支付类 App。
-     * 注意：早期版本用 `contains("pay")` / `contains("wallet")` 兜底，匹配面太宽
-     * （任何名字里带 pay 的 App、甚至壁纸类都会命中），现在改成显式语料 + 银行关键词。
-     */
-    fun isPaymentApp(pkg: String): Boolean {
+    /** 支付通道：微信/支付宝/云闪付/银行 App（注意微信仍是聊天类，走特殊判定） */
+    fun isPayRail(pkg: String): Boolean {
         if (isChatApp(pkg)) return false
-        if (paymentPackages.contains(pkg)) return true
+        if (PAY_RAIL_PACKAGES.contains(pkg)) return true
         val p = pkg.lowercase()
         return p.contains("bank") || p.contains("alipay") || p.contains("unionpay") ||
             p.contains("icbc") || p.contains("cmb") || p.contains("ccb") || p.contains("boc") ||
@@ -164,6 +216,25 @@ object CaptureFilters {
             p.contains("bankcomm") || p.contains("wallet")
     }
 
+    fun isCommerceApp(pkg: String): Boolean =
+        COMMERCE_PACKAGES.contains(pkg) ||
+            pkg.contains("taobao", true) || pkg.contains("tmall", true) ||
+            pkg.contains("jingdong", true) || pkg.contains("pinduoduo", true) ||
+            pkg.contains("meituan", true) || pkg.contains("didi", true)
+
+    fun isContentApp(pkg: String): Boolean =
+        CONTENT_PACKAGES.contains(pkg) ||
+            pkg.contains("aweme", true) || pkg.contains("kuaishou", true) ||
+            pkg.contains("gifmaker", true) || pkg.contains("xhs", true) ||
+            pkg.contains("weibo", true) || pkg.contains("bili", true)
+
+    /** 支付类 App（旧语义：支付通道 + 电商），保留给统计/诊断用 */
+    fun isPaymentApp(pkg: String): Boolean = isPayRail(pkg) || isCommerceApp(pkg)
+
+    /** 值得在「通知体检」里展示的 App（含内容类，方便排查「为什么这条没抓」） */
+    fun isWatchedApp(pkg: String): Boolean =
+        isPayRail(pkg) || isCommerceApp(pkg) || isContentApp(pkg) || isSmsApp(pkg)
+
     /**
      * 各家的提示词都不一样，这里尽量放宽：
      * 微信「支付成功 / 已支付」、支付宝「你已成功付款 / 付款成功」、银行「消费 / 扣款 / 入账」。
@@ -171,8 +242,8 @@ object CaptureFilters {
      */
     private val STRONG_HINTS = listOf(
         "支付成功", "付款成功", "已成功付款", "成功付款", "已支付", "支付", "付款",
-        "消费", "扣款", "支出", "入账", "到账", "转账", "收款", "退款",
-        "交易金额", "实付", "缴费", "还款", "提现"
+        "消费", "扣款", "扣费", "已扣", "支出", "入账", "到账", "转账", "收款", "退款",
+        "交易金额", "实付", "缴费", "还款", "提现", "支付给", "付款给"
     )
 
     /** 文本里「带单位的金额」出现几次（列表页一般 ≥3） */
@@ -220,9 +291,7 @@ object CaptureFilters {
             text.contains("人民币")
         // 红包/转账卡片可能只有「[微信红包]」没有金额：放行给解析引擎，解析不出金额自然不会记账
         val transferCard = isChatApp(pkg) && TRANSFER_MARKERS.any { text.contains(it) }
-        if (!hasMoney && !transferCard) {
-            return false
-        }
+        if (!hasMoney && !transferCard) return false
 
         // 【广告闸门】营销词 + 无动账证据 → 丢掉
         val adLike = AD_MARKERS.any { text.contains(it) || title.contains(it) }
@@ -245,19 +314,22 @@ object CaptureFilters {
         if (isChatApp(pkg)) {
             val titleOk = PAY_SOURCE_MARKERS.any { title.contains(it) }
             if (titleOk) return STRONG_HINTS.any { text.contains(it) }
-            val transferLike = TRANSFER_MARKERS.any { text.contains(it) }
             val bankLike = BANK_TEXT_MARKERS.any { text.contains(it) }
-            return transferLike && !bankLike
+            if (TRANSFER_MARKERS.any { text.contains(it) } && !bankLike) return true
+            // 少数 ROM 会把「微信支付」这个发送方塞进正文、标题留空：
+            // 文本本身是支付结果模板 + 不像群里的银行短信 → 放行（仍会进待确认，不会自动入账）
+            return STRICT_PAY_TEMPLATE.any { text.contains(it) } && !bankLike
         }
 
-        // 支付类 / 银行 App：必须「有金额 + 有支付动词 + 有结构证据」
-        // 早期这里是 `return true`，于是「信用卡本期账单 1234.56 元」这类也会进来，
-        // 甚至因为置信度够高被自动入账 —— 这是待确认堆积的主要成因。
-        if (isPaymentApp(pkg)) {
-            val verb = STRONG_HINTS.any { text.contains(it) }
-            if (!verb) return false
-            // 有结构证据（余额/单号/商户/尾号）→ 放行；没有 → 也放行但后面会被置信度封顶进待确认
-            return true
+        // 【内容/短视频/电商】刷视频时的「9.9元包邮」「直播间3元券」绝不能进账：
+        // 只认「支付成功 / 已付款 / 订单支付成功」这类强模板
+        if (isContentApp(pkg) || isCommerceApp(pkg)) {
+            return STRICT_PAY_TEMPLATE.any { text.contains(it) }
+        }
+
+        // 支付通道（银行 / 云闪付等）：必须有支付动词
+        if (isPayRail(pkg)) {
+            return STRONG_HINTS.any { text.contains(it) }
         }
 
         return hasMoney && STRONG_HINTS.any { text.contains(it) }

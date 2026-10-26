@@ -52,6 +52,11 @@ object CapturePipeline {
 
         val full = listOf(title, text).filter { it.isNotBlank() }.joinToString(" · ").trim()
         if (full.length < 6) return null
+        // 用户手动拉黑的来源：不再解析（比任何规则都准，因为是他自己点的）
+        if (CaptureBlocklist.matches(settings.captureBlocklist, pkg ?: "", full)) {
+            AppLog.d("命中抓取黑名单，已跳过 pkg=$pkg")
+            return null
+        }
         if (!CaptureFilters.shouldRead(pkg ?: "", full, title)) return null
         if (pkg == "com.tencent.mm" && !CaptureFilters.wechatLikelyPayment(full)) return null
 

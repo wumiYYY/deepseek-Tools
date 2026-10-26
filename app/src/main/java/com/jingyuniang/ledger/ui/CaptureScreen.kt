@@ -43,6 +43,7 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
     var refresh by remember { mutableStateOf(0) }
     var editingCapture by remember { mutableStateOf<Capture?>(null) }
     var showIgnoreAll by remember { mutableStateOf(false) }
+    var blockingCapture by remember { mutableStateOf<Capture?>(null) }
     var hint by remember { mutableStateOf("") }
 
     val listenerOn = remember(refresh, settings.captureNotify) { Permissions.isNotificationListenerEnabled(ctx) }
@@ -342,13 +343,55 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
                             categories = categories,
                             onConfirm = { vm.confirmCapture(c, c.categoryId, c.accountId) { } },
                             onEdit = { editingCapture = c },
-                            onIgnore = { vm.ignoreCapture(c) { } }
+                            onIgnore = { vm.ignoreCapture(c) { } },
+                            onBlock = { blockingCapture = c }
                         )
                     }
                 }
             }
 
             Spacer(Modifier.height(10.dp))
+            // 已屏蔽的来源：随时恢复，避免「屏蔽了就找不回来」
+            if (settings.captureBlocklist.isNotEmpty()) {
+                WhaleCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("已屏蔽的来源", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(6.dp))
+                        Tag("${settings.captureBlocklist.size}", p.sub)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "全部恢复", color = p.primary, fontSize = 11.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(p.primarySoft)
+                                .clickable { vm.clearCaptureBlocks() }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("这些来源的通知不再抓取（点右侧 × 恢复）", color = p.sub, fontSize = 10.sp)
+                    Spacer(Modifier.height(6.dp))
+                    settings.captureBlocklist.forEach { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                com.jingyuniang.ledger.capture.CaptureBlocklist.describe(entry),
+                                color = p.text, fontSize = 12.sp,
+                                modifier = Modifier.weight(1f), maxLines = 1
+                            )
+                            Text(
+                                "×", color = p.expense, fontSize = 14.sp,
+                                modifier = Modifier
+                                    .clickable { vm.unblockCaptureSource(entry) }
+                                    .padding(8.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
             WhaleCard {
                 SectionTitle("最近抓取记录")
                 if (all.isEmpty()) {
@@ -408,6 +451,75 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
             onSave = { catId, accId ->
                 vm.confirmCapture(target, catId, accId) { }
                 editingCapture = null
+            }
+        )
+    }
+
+    val blockTarget = blockingCapture
+    if (blockTarget != null) {
+        val appName = blockTarget.appName.ifBlank { blockTarget.pkg }
+        val kw = com.jingyuniang.ledger.capture.CaptureBlocklist.guessKeyword(
+            blockTarget.rawText, blockTarget.merchant
+        )
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { blockingCapture = null },
+            title = { Text("以后别再抓这类？", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "「$appName」这类通知以后不再抓。\n可随时在下方「已屏蔽的来源」里恢复。",
+                        color = p.sub, fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "屏蔽整个 App：$appName",
+                        color = p.text, fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(p.surfaceAlt)
+                            .clickable {
+                                val entry = com.jingyuniang.ledger.capture.CaptureBlocklist
+                                    .encode(blockTarget.pkg.ifBlank { "*" }, "")
+                                vm.blockCaptureSource(entry)
+                                vm.ignoreCapture(blockTarget) { }
+                                blockingCapture = null
+                                hint = "已屏蔽：$appName"
+                            }
+                            .padding(10.dp)
+                    )
+                    if (kw.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "只屏蔽含「$kw」的",
+                            color = p.text, fontSize = 12.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(p.surfaceAlt)
+                                .clickable {
+                                    val entry = com.jingyuniang.ledger.capture.CaptureBlocklist
+                                        .encode(blockTarget.pkg.ifBlank { "*" }, kw)
+                                    vm.blockCaptureSource(entry)
+                                    vm.ignoreCapture(blockTarget) { }
+                                    blockingCapture = null
+                                    hint = "已屏蔽：含「$kw」的通知"
+                                }
+                                .padding(10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    vm.ignoreCapture(blockTarget) { }
+                    blockingCapture = null
+                }) { Text("只忽略这条", color = p.sub) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { blockingCapture = null }) {
+                    Text("取消", color = p.sub)
+                }
             }
         )
     }
@@ -492,7 +604,8 @@ private fun CaptureRow(
     categories: List<com.jingyuniang.ledger.data.Category>,
     onConfirm: () -> Unit,
     onEdit: () -> Unit,
-    onIgnore: () -> Unit
+    onIgnore: () -> Unit,
+    onBlock: () -> Unit
 ) {
     val p = WhaleTheme.palette
     val cat = categories.firstOrNull { it.id == c.categoryId }
@@ -533,6 +646,10 @@ private fun CaptureRow(
         Text(
             "✕", color = p.sub, fontSize = 12.sp,
             modifier = Modifier.clickable { onIgnore() }.padding(6.dp)
+        )
+        Text(
+            "🚫", color = p.sub, fontSize = 12.sp,
+            modifier = Modifier.clickable { onBlock() }.padding(6.dp)
         )
     }
 }

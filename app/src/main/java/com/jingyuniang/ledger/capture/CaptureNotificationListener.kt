@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.capture
+﻿package com.jingyuniang.ledger.capture
 
 import android.app.Notification
 import android.content.Context
@@ -58,13 +58,14 @@ class CaptureNotificationListener : NotificationListenerService() {
         }
 
         // 只把「支付类应用」的通知放进体检面板，避免把聊天/广告都记下来
-        if (CaptureFilters.isPaymentApp(pkg) || CaptureFilters.isSmsApp(pkg)) {
+        if (CaptureFilters.isWatchedApp(pkg)) {
             val readable = CaptureFilters.shouldRead(pkg, all, title, channelId, channelName)
             val wechatOk = pkg != "com.tencent.mm" || CaptureFilters.wechatLikelyPayment(all)
             val chatRejected = CaptureFilters.isChatApp(pkg) && title.isNotEmpty() &&
                 !listOf("微信支付", "QQ钱包", "QQ支付", "财付通", "支付宝", "云闪付", "银联", "钱包", "银行", "信用卡", "动账", "交易提醒", "账单").any { title.contains(it) }
             val verdict = when {
-                !CaptureFilters.isPaymentApp(pkg) && !CaptureFilters.isSmsApp(pkg) -> "非支付类应用"
+                !CaptureFilters.isWatchedApp(pkg) -> "非支付类应用"
+                CaptureFilters.isContentApp(pkg) -> "内容/短视频类 App（非支付模板），已忽略"
                 CaptureFilters.isMarketingChannel(channelId, channelName) -> "营销通知渠道，已忽略"
                 CaptureFilters.isNonTxnNotice(all) -> "账单/额度/营销提醒（非动账），已忽略"
                 CaptureFilters.looksLikeStatementList(all) -> "账单列表页（多个金额），已忽略"

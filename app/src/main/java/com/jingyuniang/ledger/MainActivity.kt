@@ -192,6 +192,60 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    cmd.startsWith("probe:") -> {
+                        // 规则体检：把任意一段通知原文喂进「抓取闸门 + 金额解析」，只打日志不写库。
+                        // 用法：--es diag "probe:com.ss.android.ugc.aweme|9.9元包邮 直播间"（带包名）
+                        //       或 --es diag "probe:9.9元包邮"（不带包名，按「其他应用」判）
+                        // 分隔符用 '#'：adb shell 会把 '|' 当管道、空格当参数分隔，都会截断
+                        val raw = cmd.removePrefix("probe:")
+                        val sep = when {
+                            raw.contains("#") -> "#"
+                            raw.contains("|") -> "|"
+                            else -> ""
+                        }
+                        val parts = if (sep.isEmpty()) listOf(raw) else raw.split(sep)
+                        val pkg = if (parts.size >= 2) parts[0] else ""
+                        val title = if (parts.size >= 3) parts[1] else ""
+                        val text = parts.last()
+                        val cf = com.jingyuniang.ledger.capture.CaptureFilters
+                        val pe = com.jingyuniang.ledger.capture.ParseEngine
+                        val kind = when {
+                            cf.isSmsApp(pkg) -> "SMS"
+                            cf.isChatApp(pkg) -> "CHAT"
+                            cf.isContentApp(pkg) -> "CONTENT"
+                            cf.isCommerceApp(pkg) -> "COMMERCE"
+                            cf.isPayRail(pkg) -> "PAY_RAIL"
+                            else -> "OTHER"
+                        }
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG probe kind=$kind pkg=${pkg.ifBlank { "(none)" }} text=$text"
+                        )
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG probe junk=${pe.isJunk(text)} nonTxn=${cf.isNonTxnNotice(text)} " +
+                                "listPage=${cf.looksLikeStatementList(text)} amounts=${cf.amountCount(text)} " +
+                                "evidence=${cf.hasTxnEvidence(text)} resultPage=${cf.isPaymentResultPage(text)}"
+                        )
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG probe => shouldRead=${cf.shouldRead(pkg, text, title)} title=${title.ifBlank { "(none)" }} " +
+                                "extractAmount=${pe.extractAmount(text)}"
+                        )
+                    }
+                    cmd == "settings" -> {
+                        // 自检：升级前后对比配置是否被保住（Key 只打掩码，不落日志）
+                        val s = com.jingyuniang.ledger.Services.settings.value
+                        val keyMask = if (s.apiKey.isBlank()) "(空)" else "len=${s.apiKey.length} ...${s.apiKey.takeLast(4)}"
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG settings aiEnabled=${s.aiEnabled} model=${s.model} apiBase=${s.apiBase} key=$keyMask"
+                        )
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG settings autoBook=${s.autoBook} threshold=${s.autoBookThreshold} " +
+                                "captureMaster=${s.captureMaster} notify=${s.captureNotify} sms=${s.captureSms} " +
+                                "access=${s.captureAccess} onboardingDone=${s.onboardingDone} " +
+                                "lockPin=${if (s.lockPin.isBlank()) "未设置" else "已设置"} " +
+                                "blocklist=${s.captureBlocklist.size} ledgerId=${s.ledgerId} lastBackup=${s.lastBackup}"
+                        )
+                        dumpStateAsync("after-settings")
+                    }
                     cmd.startsWith("capture:") -> {
                         // 自检：把一条示例通知喂进真实抓取流水线（0=微信 1=银行短信 2=支付宝）
                         val sample = cmd.removePrefix("capture:").toIntOrNull() ?: 0

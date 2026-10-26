@@ -8,8 +8,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.prefStore: DataStore<Preferences> by preferencesDataStore(name = "whale_settings")
@@ -43,7 +45,9 @@ data class Settings(
     /** 自动记账总开关（关掉=完全不读通知/短信，省电） */
     val captureMaster: Boolean = true,
     /** 应用锁 4 位密码，空 = 未启用 */
-    val lockPin: String = ""
+    val lockPin: String = "",
+    /** 抓取黑名单：`pkg|keyword`，keyword 空 = 整个 App 不抓（见 CaptureBlocklist） */
+    val captureBlocklist: List<String> = emptyList()
 )
 
 class Prefs(private val ctx: Context) {
@@ -70,6 +74,7 @@ class Prefs(private val ctx: Context) {
         val quickNotify = booleanPreferencesKey("quick_notify")
         val captureMaster = booleanPreferencesKey("capture_master")
         val lockPin = stringPreferencesKey("lock_pin")
+        val captureBlocklist = stringSetPreferencesKey("capture_blocklist")
     }
 
     val flow: Flow<Settings> = ctx.prefStore.data.map { p ->
@@ -94,7 +99,8 @@ class Prefs(private val ctx: Context) {
             selectedTab = p[K.selectedTab] ?: 0,
             quickNotify = p[K.quickNotify] ?: false,
             captureMaster = p[K.captureMaster] ?: true,
-            lockPin = p[K.lockPin] ?: ""
+            lockPin = p[K.lockPin] ?: "",
+            captureBlocklist = (p[K.captureBlocklist] ?: emptySet()).toList()
         )
     }
 
@@ -119,6 +125,19 @@ class Prefs(private val ctx: Context) {
     suspend fun setQuickNotify(v: Boolean) = put(K.quickNotify, v)
     suspend fun setCaptureMaster(v: Boolean) = put(K.captureMaster, v)
     suspend fun setLockPin(v: String) = put(K.lockPin, v)
+
+    /** 加一条抓取黑名单（同一条重复加会去重） */
+    suspend fun addCaptureBlock(entry: String) {
+        val cur = (flow.first().captureBlocklist) + entry
+        put(K.captureBlocklist, cur.filter { it.isNotBlank() }.toSet())
+    }
+
+    suspend fun removeCaptureBlock(entry: String) {
+        val cur = (flow.first().captureBlocklist) - entry
+        put(K.captureBlocklist, cur.toSet())
+    }
+
+    suspend fun clearCaptureBlocks() = put(K.captureBlocklist, emptySet())
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
         ctx.prefStore.edit { it[key] = value }

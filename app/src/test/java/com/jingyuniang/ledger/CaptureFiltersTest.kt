@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger
+﻿package com.jingyuniang.ledger
 
 import com.jingyuniang.ledger.capture.CaptureFilters
 import org.junit.Assert.assertEquals
@@ -181,5 +181,56 @@ class CaptureFiltersTest {
         assertTrue(CaptureFilters.hasTxnEvidence("您尾号8888的账户支出人民币48.00元，余额1,234.56元"))
         assertTrue(CaptureFilters.hasTxnEvidence("支付成功 ¥25.00，收款方：星巴克"))
         assertFalse(CaptureFilters.hasTxnEvidence("支付成功 ¥25.00"))
+    }
+    // ---------- 2026-10 第二轮：刷视频/逛电商也被抓 ----------
+
+    @Test
+    fun `抖音刷视频的推送不算账`() {
+        // 真机反馈：刷视频时也被记账
+        assertFalse(CaptureFilters.shouldRead("com.ss.android.ugc.aweme", "9.9元包邮！爆款直降", "抖音"))
+        assertFalse(CaptureFilters.shouldRead("com.ss.android.ugc.aweme", "直播间3元券限时领", "抖音"))
+        assertFalse(CaptureFilters.shouldRead("com.smile.gifmaker", "关注的主播开播了 19.9元起", "快手"))
+        assertFalse(CaptureFilters.shouldRead("com.xingin.xhs", "你的笔记有 2 个赞 好物 39元", "小红书"))
+    }
+
+    @Test
+    fun `在抖音真的付了钱仍然要抓`() {
+        assertTrue(
+            CaptureFilters.shouldRead(
+                "com.ss.android.ugc.aweme", "抖音支付 · 支付成功 ¥12.90", "抖音支付"
+            )
+        )
+    }
+
+    @Test
+    fun `淘宝商品标题里的规格数字不算金额`() {
+        assertFalse(
+            CaptureFilters.shouldRead(
+                "com.taobao.taobao",
+                "中国地质大学欧泊吊坠胸针 925银精工镶嵌，双面佩戴",
+                "淘宝"
+            )
+        )
+        // 925 后面跟「银」→ 不是金额
+        assertEquals(0L, com.jingyuniang.ledger.capture.ParseEngine.extractAmount("欧泊吊坠 925银精工镶嵌"))
+    }
+
+    @Test
+    fun `电商的订单支付成功要抓`() {
+        assertTrue(
+            CaptureFilters.shouldRead("com.jingdong.app.mall", "订单支付成功，实付 199.00 元", "京东")
+        )
+    }
+
+    @Test
+    fun `三类 App 的分类判定`() {
+        assertTrue(CaptureFilters.isPayRail("com.eg.android.AlipayGphone"))
+        assertTrue(CaptureFilters.isPayRail("cmb.pb"))
+        assertTrue(CaptureFilters.isCommerceApp("com.taobao.taobao"))
+        assertTrue(CaptureFilters.isCommerceApp("com.xunmeng.pinduoduo"))
+        assertTrue(CaptureFilters.isContentApp("com.ss.android.ugc.aweme"))
+        assertFalse(CaptureFilters.isPayRail("com.ss.android.ugc.aweme"))
+        assertFalse(CaptureFilters.isContentApp("cmb.pb"))
+        assertTrue(CaptureFilters.isWatchedApp("com.ss.android.ugc.aweme"))
     }
 }

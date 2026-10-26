@@ -177,6 +177,17 @@ object ParseEngine {
     )
     private val NEG_AFTER = listOf("余额", "额度", "可用", "剩余", "积分")
 
+    /**
+     * 数字后面紧跟这些单位 → 是商品规格/材质，不是金额。
+     * 真机踩过：淘宝推送「中国地质大学欧泊吊坠 925银精工镶嵌」被记成 925 元支出。
+     */
+    private val SPEC_UNIT_AFTER = listOf(
+        "银", "金", "k金", "K金", "克拉", "克", "mg", "毫升", "英寸", "寸",
+        "mah", "mAh", "毫安", "gb", "GB", "tb", "TB", "mb", "MB", "hz", "Hz",
+        "像素", "万像素", "℃", "°c", "cm", "mm", "ml", "mL", "kg", "公斤", "厘米", "毫米",
+        "号", "码", "件", "只", "支", "瓶", "袋", "盒", "套", "枚", "条", "片", "粒"
+    )
+
     private data class Cand(val cents: Long, val score: Int, val pos: Int)
 
     fun extractAmount(text: String): Long {
@@ -202,6 +213,8 @@ object ParseEngine {
             val afterTrim = after.trimStart()
             if (afterTrim.startsWith("元") || afterTrim.startsWith("块")) score += 5
             else if (after.contains("元") || after.contains("块")) score += 2
+            // 规格/材质单位：商品标题里的「925银」「18K金」「5000mAh」「6.7英寸」不是金额
+            if (SPEC_UNIT_AFTER.any { afterTrim.startsWith(it) }) score -= 30
             if (NEG_BEFORE.any { before.contains(it) }) score -= 20
             if (before.contains("尾号") || before.endsWith("尾")) score -= 6
             if (before.any { it == ':' || it == '：' || it == '-' || it == '/' } ||
