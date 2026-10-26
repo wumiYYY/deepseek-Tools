@@ -10,13 +10,14 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | **v1.4.0**（versionCode **10400**，数据库 schema **v2**，未动 schema） |
-| 提交 | `main` HEAD 见 `git log -1`（本会话新增 `release: v1.4.0` 一提交，已在本机 tag `v1.4.0`） |
-| CI | 本地 `:app:testDebugUnitTest` **120 个全绿**；GitHub Actions 待 `push` 后确认（红灯不许合） |
-| 产物 | `dist/1.4.0/鲸鱼娘金库-v1.4.0.apk`（24.58 MB，仅 arm64-v8a，sha256 `34da077d…8927`；v2 签名指纹已核对 = `e7962e34…1975`） |
-| 设备 | 用户手机仍是 v1.3.2；**v1.4.0 还没装机回归**（新加的「说人话的规则」卡片要真机看一眼再给人用） |
-| 真实账本 | 30 笔、`pendingCaptures=1`、`blocklist=0`（未动） |
+| 版本 | **v1.4.1**（versionCode **10401**，数据库 schema **v2**，未动 schema） |
+| 提交 | `main` HEAD 见 `git log -1`（本会话 4 个提交 + tag `v1.4.0`、`v1.4.1`，已 push GitHub） |
+| CI | 本地 `:app:testDebugUnitTest` **120 个全绿**；GitHub Actions 待确认（红灯不许合） |
+| 产物 | `dist/1.4.1/鲸鱼娘金库-v1.4.1.apk`（24.58 MB，仅 arm64-v8a，sha256 `0ede13c6…1c6c`；v2 签名指纹 = `e7962e34…1975`） |
+| 设备 | **用户手机已装 v1.4.1**（从 v1.3.2 升上来，走的是「说人话的规则」真机回归那轮测试） |
+| 真实账本 | 30 笔、`pendingCaptures=0`、`blocklist=0`；**与升级前一字不差**（见 §5） |
 | 余额基线 | `1:0, 2:-119910, 3:-38923`（账户 1:现金 2:微信* 3:支付宝） |
+| 规则 | 真机测试后已 `resetrules` → 回到 **App 内置 490 条**（手机上一个测试词都不留） |
 | 测试 | **120 个**单测（108 + 新增 `RuleGuideTest` 12 个；仍含 22 个"逐条遍历 490 条规则"的断言） |
 
 > ⚠️ **绝对不要清用户数据**。造测试数据后必须用 `del:<txnId>` / `delcap:<id>` 删干净，
@@ -174,7 +175,11 @@ app/src/main/
 | 升级保留配置 | `aiEnabled/model=sc-deepseek-flash/apiBase=litellm…/key=len=25` 升级前后一致 |
 | 签名一致性（v1.4.0 会话） | `keytool` 读 `keystore/jingyuniang-release.jks`、`apksigner` 读 `dist/1.3.2` 与 `dist/1.4.0` 的 APK —— 三处 SHA-256 都是 `e7962e34…1975`，`CN=JingYuniang`，v2 签名方案 |
 | 交接脚本可用（v1.4.0 会话） | `setup-signing.ps1` 在一个「只有 jks」的干净路径上跑通：放好 keystore、写好 `local.properties`（无 BOM）、自检打印 `✅ 与正式版一致`，退出码 0 |
-| 说人话的规则（v1.4.0） | `RuleGuideTest` 12 个断言：25 条建议逐条真加一遍 + 导出/解析往返不丢词 + 重复加不撑表 + 能撤回；**尚未真机回归** |
+| 说人话的规则（v1.4.0） | `RuleGuideTest` 12 个断言：25 条建议逐条真加一遍 + 导出/解析往返不丢词 + 重复加不撑表 + 能撤回 |
+| 说人话的规则（v1.4.1 真机） | 点「加入这 3 个词」→ 计数 44→48 / 490→494 / 494→497 实时变化，来源立刻变「用户文件（capture_rules.json）」；自填词 `ZQTEST2` 加进非动账模板后**就地**提示「已加入」 |
+| 加词真的会改判定（真机 A/B） | 同一段 `宝贝ZQTEST消费5元`（支付宝）：加词前 `probe → shouldRead=true extractAmount=500`；把 `ZQTEST` 加进 nonTxnMarkers 后 `nonTxn=true → shouldRead=false`；`resetrules` 后恢复 true |
+| 升级不动数据（1.3.2→1.4.0→1.4.1） | 三次安装后 `txnCount=30`、`balances=1:0, 2:-119910, 3:-38923` 一字不差；配置全保留（`key=len=25`、`threshold=80`、`blocklist=0`、`access=true`） |
+| 升级自动快照 | `auto_upgrade_from_v10302_to_v10400_*.json`、`auto_upgrade_from_v10400_to_v10401_*.json` 各生成一份 |
 
 ---
 
@@ -211,6 +216,13 @@ app/src/main/
     等等，否则报一堆 `Unresolved reference`（`compileDebugUnitTestKotlin` 会一次喷 20 行）。
 24. 仓库里的 `README.md` 曾被 PowerShell 的 `` `a `` `` `f `` `` `t `` 转义吃掉首字母（`assets` 变 `ssets`），
     表现为文件里混进 BEL/FF/TAB 控制字符；改文档后 grep 一下 `[char]7/12/9`。
+25. **Compose 里读普通 object 的属性不会触发重组**：`RuleStore.current` 是单例字段，加完词界面
+    还显示「App 内置 · 490 条」。要用一个 `version` 状态驱动（`remember(version) { … }`），
+    并在改变处 `version++`；更好的做法是写盘后 `reload()` 回读，保证界面 = 磁盘。
+26. **提示要画在操作点附近**：结果列表有 8 条，把「已加入」画在列表尾部等于没提示；
+    自填词在卡片底部，提示画在顶部也一样看不到。两处都踩过。
+27. **`probe` 做 A/B 时慎用英文字母开头紧贴数字**：`ZZQ5元` 的 `extractAmount=0`（被当编号前缀），
+    要用中文 token，或让数字跟在「消费/支付」这类汉字后面。
 
 ---
 

@@ -238,8 +238,10 @@ object RuleStore {
         next.validate()?.let { return "改完的规则没通过自检：$it" }
         return runCatching {
             userFile(context).writeText(exportJson(next))
-            cached = next
-            AppLog.i("规则加词：$tableKey +${words.joinToString("/")}（共 ${next.totalEntries} 条）")
+            // 写完立刻回读：界面上显示的「当前：<来源> · 共 N 条」必须等于磁盘上的真实内容，
+            // 否则用户会看到「App 内置 · 490 条」却明明加了 4 个词（真机踩过）。
+            reload()
+            AppLog.i("规则加词：$tableKey +${words.joinToString("/")}（共 ${current.totalEntries} 条）")
             null
         }.getOrElse { "写入失败：${it.message}" }
     }
@@ -252,8 +254,8 @@ object RuleStore {
         next.validate()?.let { return "改完的规则没通过自检：$it" }
         return runCatching {
             userFile(context).writeText(exportJson(next))
-            cached = next
-            AppLog.i("规则删词：$tableKey -$word（共 ${next.totalEntries} 条）")
+            reload()
+            AppLog.i("规则删词：$tableKey -$word（共 ${current.totalEntries} 条）")
             null
         }.getOrElse { "写入失败：${it.message}" }
     }

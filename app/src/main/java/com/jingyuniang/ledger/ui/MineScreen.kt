@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.ui
+package com.jingyuniang.ledger.ui
 
 import android.content.Context
 import androidx.compose.foundation.background
@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jingyuniang.ledger.BuildConfig
 import com.jingyuniang.ledger.Permissions
 import com.jingyuniang.ledger.util.Fmt
 
@@ -217,7 +218,7 @@ fun MineScreen(
                     onOpenAccount()
                 }
                 RowDivider()
-                SettingRow("ℹ️", "关于鲸鱼娘", "v1.0.0 · 纯本地存储", "", onClick = onOpenAbout)
+                SettingRow("ℹ️", "关于鲸鱼娘", "v${BuildConfig.VERSION_NAME} · 纯本地存储", "", onClick = onOpenAbout)
             }
 
             Text(

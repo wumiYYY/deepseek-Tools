@@ -26,7 +26,7 @@ import com.jingyuniang.ledger.capture.RuleTip
  * 加词走 [RuleStore.addWords]（写用户规则文件，和「导入规则」同一条路径，重启也不丢）。
  */
 @Composable
-fun RuleGuideCard(ctx: Context) {
+fun RuleGuideCard(ctx: Context, onRulesChanged: () -> Unit = {}) {
     val p = WhaleTheme.palette
     var query by remember { mutableStateOf("") }
     var msg by remember { mutableStateOf("") }
@@ -54,6 +54,19 @@ fun RuleGuideCard(ctx: Context) {
         )
 
         Spacer(Modifier.height(10.dp))
+        // 反馈必须放在搜索框下面：结果列表有 8 条，放列表尾部等于用户点了看不到任何回应（真机踩过）
+        if (msg.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(p.primary.copy(alpha = 0.14f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                Text(msg, color = p.primary, fontSize = 11.sp, lineHeight = 16.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         if (results.isEmpty()) {
             Text(
                 "没找到对应的症状。换个词试试，或者用下面的「自己加一个词」。",
@@ -68,6 +81,7 @@ fun RuleGuideCard(ctx: Context) {
                     msg = when (val err = RuleStore.addWords(ctx, tableKey, words)) {
                         null -> {
                             version++
+                            onRulesChanged()
                             "已加入「${RuleGuide.table(tableKey)?.title}」：${words.joinToString("、")} —— 已经生效"
                         }
                         else -> err
@@ -77,14 +91,9 @@ fun RuleGuideCard(ctx: Context) {
             Spacer(Modifier.height(10.dp))
         }
 
-        if (msg.isNotBlank()) {
-            Text(msg, color = p.primary, fontSize = 11.sp, lineHeight = 16.sp)
-            Spacer(Modifier.height(8.dp))
-        }
-
-        FreeWordAdder(ctx) { text ->
+        FreeWordAdder(ctx) {
             version++
-            msg = text
+            onRulesChanged()
         }
     }
 }
@@ -135,12 +144,13 @@ private fun TipBlock(
     }
 }
 
-/** 兜底：用户想自己塞一个词（比如某个 App 特有的话术） */
+/** 兜底：用户想自己塞一个词（比如某个 App 特有的话术）。反馈就地显示，别让人滚上去找。 */
 @Composable
-private fun FreeWordAdder(ctx: Context, onDone: (String) -> Unit) {
+private fun FreeWordAdder(ctx: Context, onAdded: () -> Unit) {
     val p = WhaleTheme.palette
     var word by remember { mutableStateOf("") }
     var tableKey by remember { mutableStateOf("adMarkers") }
+    var freeMsg by remember { mutableStateOf("") }
     val choices = listOf("adMarkers", "nonTxnMarkers", "junk", "fundTransferMarkers")
 
     Spacer(Modifier.height(4.dp))
@@ -186,21 +196,26 @@ private fun FreeWordAdder(ctx: Context, onDone: (String) -> Unit) {
         Spacer(Modifier.width(8.dp))
         MiniButton("加上去") {
             val w = word.trim()
-            if (w.isEmpty()) {
-                onDone("先填一个词")
-            } else if (w.length < 2) {
-                onDone("「$w」太短了：单个字容易误杀真实账目，请写具体一点")
-            } else {
-                val err = RuleStore.addWords(ctx, tableKey, listOf(w))
-                if (err == null) {
-                    val title = RuleGuide.table(tableKey)?.title ?: tableKey
-                    word = ""
-                    onDone("已加入「$title」：$w —— 已经生效")
-                } else {
-                    onDone(err)
+            freeMsg = when {
+                w.isEmpty() -> "先填一个词"
+                w.length < 2 -> "「$w」太短了：单个字容易误杀真实账目，请写具体一点"
+                else -> {
+                    val err = RuleStore.addWords(ctx, tableKey, listOf(w))
+                    if (err == null) {
+                        val title = RuleGuide.table(tableKey)?.title ?: tableKey
+                        word = ""
+                        onAdded()
+                        "已加入「$title」：$w —— 已经生效"
+                    } else {
+                        err
+                    }
                 }
             }
         }
+    }
+    if (freeMsg.isNotBlank()) {
+        Spacer(Modifier.height(6.dp))
+        Text(freeMsg, color = p.primary, fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 

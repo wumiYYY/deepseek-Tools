@@ -248,6 +248,9 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
     var shareTarget by remember { mutableStateOf<File?>(null) }
     var askPassword by remember { mutableStateOf<String?>(null) } // "backup" / "restore"
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    // 规则被「说人话的规则」改过后要重算上面的「共 N 条规则」卡片；
+    // RuleStore 是普通全局对象，不放进状态里这一行永远显示 490 / App 内置（真机踩过）。
+    var rulesVersion by remember { mutableStateOf(0) }
 
     val pickBill = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -330,7 +333,8 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
         WhaleCard {
             Text("识别规则（可自己改）", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
-            val rules = com.jingyuniang.ledger.capture.RuleStore.current
+            // 三个触发源都要重算：说人话加词（rulesVersion）/ 导入 / 恢复默认（都改 ruleInfo）
+            val rules = remember(rulesVersion, ruleInfo) { com.jingyuniang.ledger.capture.RuleStore.current }
             Text(
                 "当前：${rules.source} · 共 ${rules.totalEntries} 条规则",
                 color = p.sub, fontSize = 11.sp
@@ -369,7 +373,7 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
 
         // 「说人话的规则」：不用读 JSON，说出症状就能加词（Backlog P1）
         Spacer(Modifier.height(10.dp))
-        RuleGuideCard(ctx)
+        RuleGuideCard(ctx, onRulesChanged = { rulesVersion++ })
 
         Spacer(Modifier.height(10.dp))
         WhaleCard {
