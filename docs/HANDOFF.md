@@ -2,7 +2,8 @@
 
 > **给下一个会话的自己 / 给合作者**：读完这一份就能接手，不用重新摸索。
 > 面向使用者的说明书是 `docs/用户指引.md`；抓取规则的**定版规范**是 `docs/CAPTURE_RULES_V1.md`；
-> 协作流程是 `CONTRIBUTING.md`；发版流程是 `docs/RELEASE.md`。
+> 协作流程是 `CONTRIBUTING.md`；发版流程是 `docs/RELEASE.md`；
+> **要拿签名、要部署服务器 / 做内置更新、想看红线 → `docs/合作者交接.md`**。
 
 ---
 
@@ -172,7 +173,7 @@ app/src/main/
 | 抓取准确率 | probe：抖音「9.9元包邮」拦 / 抖音「支付成功¥12.9」抓 / 淘宝「925银」拦且金额=0 / 招行「本期账单」拦 / 招行真实消费 87.13 抓 |
 | 一键忽略 | 待确认 11 条 → `pendingCaptures=0`，已入账账目不变 |
 | 抓取黑名单 | 点 🚫 → `blocklist=1` → 「已屏蔽的来源」→「全部恢复」归 0 |
-| 升级保留配置 | `aiEnabled/model=sc-deepseek-flash/apiBase=litellm…/key=len=25` 升级前后一致 |
+| 升级保留配置 | `aiEnabled/model=<自填>/apiBase=<自填，长度不变>/key=len=25` 升级前后一致（**别把真实内网地址写进文档，这是公开仓库**） |
 | 签名一致性（v1.4.0 会话） | `keytool` 读 `keystore/jingyuniang-release.jks`、`apksigner` 读 `dist/1.3.2` 与 `dist/1.4.0` 的 APK —— 三处 SHA-256 都是 `e7962e34…1975`，`CN=JingYuniang`，v2 签名方案 |
 | 交接脚本可用（v1.4.0 会话） | `setup-signing.ps1` 在一个「只有 jks」的干净路径上跑通：放好 keystore、写好 `local.properties`（无 BOM）、自检打印 `✅ 与正式版一致`，退出码 0 |
 | 说人话的规则（v1.4.0） | `RuleGuideTest` 12 个断言：25 条建议逐条真加一遍 + 导出/解析往返不丢词 + 重复加不撑表 + 能撤回 |

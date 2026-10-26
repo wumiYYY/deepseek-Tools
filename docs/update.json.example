@@ -1,0 +1,13 @@
+{
+  "_comment": "拷到服务器的静态目录，改名 update.json。字段含义见 docs/合作者交接.md §4.3",
+  "versionCode": 10401,
+  "versionName": "1.4.1",
+  "apk": "1.4.1/jingyuniang-v1.4.1.apk",
+  "sha256": "0ede13c6627a3bdb8e00e6fec24c2ee0a3927349195a8eb777dbb346b1eb1c6c",
+  "sizeBytes": 25770933,
+  "signatureSha256": "e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975",
+  "channel": "stable",
+  "publishedAt": "2026-10-26T16:20:00+08:00",
+  "minSupportedVersionCode": 0,
+  "notes": "修 4 处交互；退款冲正更好用"
+}
