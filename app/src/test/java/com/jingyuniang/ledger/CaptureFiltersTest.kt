@@ -236,17 +236,18 @@ class CaptureFiltersTest {
     // ---------- 外部参考对齐：业务语义排除（bank-sms-parser 的 hard exclusion） ----------
 
     @Test
-    fun `信用卡还款不是消费也不是退款`() {
-        assertFalse(
-            CaptureFilters.shouldRead(
-                "cmb.pb", "您尾号8888信用卡还款成功，金额 1000.00 元", "招商银行"
-            )
-        )
-        assertFalse(
-            CaptureFilters.shouldRead(
-                "com.android.mms", "【招商银行】您信用卡自动还款 1,000.00 元，已还款", "95555"
-            )
-        )
+    fun `信用卡还款识别为资金转移而不是消费`() {
+        // 还款是「储蓄卡 → 信用卡」的转移：放行给流水线记成 TRANSFER（不计收支），不能当消费
+        val t1 = "您尾号8888信用卡还款成功，金额 1000.00 元"
+        assertTrue(CaptureFilters.isRepayment(t1))
+        assertTrue(CaptureFilters.shouldRead("cmb.pb", t1, "招商银行"))
+
+        val t2 = "【招商银行】您信用卡自动还款 1,000.00 元，已还款"
+        assertTrue(CaptureFilters.isRepayment(t2))
+        assertTrue(CaptureFilters.shouldRead("com.android.mms", t2, "95555"))
+
+        // 普通消费不能被误判成还款
+        assertFalse(CaptureFilters.isRepayment("您账户3979发生快捷支付扣款，人民币10.00元"))
     }
 
     @Test

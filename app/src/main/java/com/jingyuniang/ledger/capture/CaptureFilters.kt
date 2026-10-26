@@ -156,13 +156,31 @@ object CaptureFilters {
         "包邮", "直降", "上新", "直播间", "猜你喜欢", "为你推荐", "浏览", "收藏", "加购",
         "订单已发货", "已发货", "待收货", "物流",
         "小荷包", "支付红包", "消费红包", "立减金", "返现红包", "红包雨",
-        // 业务语义：还款/分期不是「一笔新消费」
-        // 见 docs/CAPTURE_RULES.md —— 业界共识（bank-sms-parser 的 hard exclusion）：
-        //   ① 信用卡还款不是消费，也不是退款；② 把已有消费转成分期会重复计
-        "信用卡还款", "还款成功", "还款入账", "已还款", "自动还款",
+        // 业务语义：分期不是「一笔新消费」（把已有消费重新分期 → 再记一次就重复计了）
+        // 见 docs/CAPTURE_RULES.md —— 业界共识（bank-sms-parser 的 hard exclusion）
+        // 注意：还款**不在这里** —— 还款是「资金转移」（储蓄卡 → 信用卡），要记成 TRANSFER 而不是丢掉，
+        // 见 REPAYMENT_MARKERS / isRepayment()
         // 注意：只排除「把已有消费重新分期」的，不排除「分期付款成功」——那可能是真的一笔支付
         "账单分期", "分期成功", "转为分期", "已分期"
     )
+
+    /**
+     * 信用卡还款类：这是**资金转移**（储蓄卡 → 信用卡），不是消费。
+     *
+     * 为什么不直接丢掉：
+     * - 记成「支出」会让本月支出虚增（钱只是从自己的一个口袋挪到另一个口袋）；
+     * - 完全不记，用户又看不到「我还了 1000」这件事；
+     * - 所以正确做法是记成 `TxnType.TRANSFER`：不计入收支/预算，但保留流水、且能正确影响两个账户的余额。
+     *
+     * 没有信用卡账户时（用户还没建信用卡），没法组成「A → B」，此时丢弃并说明原因。
+     */
+    private val REPAYMENT_MARKERS = listOf(
+        "信用卡还款", "还款成功", "还款入账", "已还款", "自动还款", "还信用卡",
+        "还款金额", "本期还款", "账单还款"
+    )
+
+    /** 是不是信用卡还款（资金转移，不是消费） */
+    fun isRepayment(text: String): Boolean = REPAYMENT_MARKERS.any { text.contains(it) }
 
     /** 真正的动账证据：有这些词才可能是账单，没有就是广告 */
     private val PAY_EVIDENCE = listOf(
@@ -311,6 +329,9 @@ object CaptureFilters {
         val adLike = AD_MARKERS.any { text.contains(it) || title.contains(it) }
         val payEvidence = PAY_EVIDENCE.any { text.contains(it) }
         if (adLike && !payEvidence) return false
+
+        // 【还款】放行，由 pipeline 记成 TRANSFER（资金转移，不计收支）
+        if (isRepayment(text)) return hasMoney
 
         // 【非动账模板】账单提醒 / 额度调整 / 营销：即使带「消费」「还款」也不记账
         if (isNonTxnNotice(text)) return false

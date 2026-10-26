@@ -110,8 +110,20 @@ object CapturePipeline {
         //           两者都不满足 → 封顶 79，进待确认
         //   · 聊天类转发文本再降 20
         //   · 短信是最可靠的来源，保持原分
+        // 信用卡还款 = 资金转移（储蓄卡 → 信用卡），不是消费：
+        // 记成 TRANSFER 不污染收支统计，但保留流水、且两端账户余额都会正确变化。
+        // 没有信用卡账户时无法组成「A → B」，丢弃并留一句原因（用户能理解为什么没记）。
+        val repayment = CaptureFilters.isRepayment(full)
+        if (repayment) {
+            val credit = accounts.firstOrNull { it.type == com.jingyuniang.ledger.data.AccountType.CREDIT }
+            if (credit == null) {
+                AppLog.i("跳过信用卡还款（未建信用卡账户，无法记成转账）：${raw.amountCents} 分")
+                return null
+            }
+        }
         val parsed = raw.copy(
-            confidence = effectiveConfidence(source, pkg, title, full, raw.confidence)
+            confidence = effectiveConfidence(source, pkg, title, full, raw.confidence),
+            direction = if (repayment) TxnType.TRANSFER else raw.direction
         )
         val now = System.currentTimeMillis()
 
@@ -219,11 +231,21 @@ object CapturePipeline {
         val repo = Services.repo
         val categories = repo.categoryDao.all()
         val accounts = repo.accountDao.all()
-        val type = if (capture.direction == TxnType.INCOME) TxnType.INCOME else TxnType.EXPENSE
-        val cat = categoryId.takeIf { it > 0 }
+        val type = when (capture.direction) {
+            TxnType.INCOME -> TxnType.INCOME
+            TxnType.TRANSFER -> TxnType.TRANSFER
+            else -> TxnType.EXPENSE
+        }
+        // 转账类（信用卡还款）：出账账户是通知里匹配到的账户（储蓄卡/微信），入账账户是信用卡
+        val creditAcc = if (type == TxnType.TRANSFER) {
+            accounts.firstOrNull { it.type == com.jingyuniang.ledger.data.AccountType.CREDIT }
+        } else null
+        var cat = categoryId.takeIf { it > 0 }
             ?: categories.firstOrNull { it.type == type && it.name == "其他" }?.id
             ?: categories.firstOrNull { it.type == type }?.id ?: 0L
-        val acc = accountId.takeIf { it > 0 }
+        // 转账在分类表里可能没有对应分类，退回任意分类（转账不计收支，分类只影响展示）
+        if (type == TxnType.TRANSFER && cat == 0L) cat = categories.firstOrNull()?.id ?: 0L
+        val acc = accountId.takeIf { it > 0 && creditAcc?.id != it }
             ?: accounts.firstOrNull { it.isDefault }?.id
             ?: accounts.firstOrNull { it.type == com.jingyuniang.ledger.data.AccountType.WECHAT }?.id
             ?: accounts.firstOrNull()?.id ?: 0L
@@ -234,6 +256,8 @@ object CapturePipeline {
                 amountCents = capture.amountCents,
                 categoryId = cat,
                 accountId = acc,
+                toAccountId = creditAcc?.id ?: 0L,
+                toAmountCents = if (type == TxnType.TRANSFER) capture.amountCents else 0L,
                 date = capture.time,
                 note = capture.merchant.ifBlank { cleanNote(capture.rawText) },
                 merchant = capture.merchant,

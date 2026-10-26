@@ -314,6 +314,15 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
 
             Spacer(Modifier.height(10.dp))
             WhaleCard {
+                Text(
+                    "💳 信用卡还款不会被记成「支出」——它是「储蓄卡 → 信用卡」的资金转移，记成**转账**，不计入收支。\n" +
+                        "如果还没建信用卡账户，这类通知会被直接跳过（位置：我的 → 账户管理 → 新增，类型选「信用卡」）。",
+                    color = p.sub, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            WhaleCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("待确认", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(6.dp))

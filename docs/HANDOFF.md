@@ -7,7 +7,7 @@
 ## 0. 一句话现状
 
 Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），核心是**自动记账**（通知/短信抓取 + AI 一句话记账），UI 是二次元深蓝+鎏金女仆风。
-**当前版本 v1.2.4（versionCode 10204）**，产物 `dist/1.2.4/鲸鱼娘金库-v1.2.4.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
+**当前版本 v1.2.5（versionCode 10205）**，产物 `dist/1.2.5/鲸鱼娘金库-v1.2.5.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
 **抓取规则的外部参考与我们的对照见 `docs/CAPTURE_RULES.md`**
 发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`，**给使用者的说明书是 `docs/用户指引.md`**（`release.ps1` 会自动把它放进 `dist/<版本>/`）。
 代码已入 git 并推到 `https://github.com/wumiYYY/deepseek-Tools`（`main` + tag `v1.2.0`）。
@@ -65,6 +65,7 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 > `restorefile:latest:<密码>` = 恢复最新一份备份（备份文件名带中文，adb 传参会丢字节，所以用 `latest`）；
 > `dump` = 打印账户 + 余额 + 最近 6 笔 + 待确认数；`del:<txnId>` = 删测试数据；
 > `settings` = 打印关键配置（Key 只打掩码）用于**升级前后比对配置是否保留**；
+> `diag simulate:<pkg>#<title>#<原文>` = 走完整流水线（会写库），验证「到底记没记/记成什么」；`delcap:<id>` = 删一条抓取记录；
 > `probe:<pkg>#<title>#<原文>` = **规则体检**：把任意通知原文喂进抓取闸门，日志输出
 > `kind/junk/nonTxn/listPage/evidence/shouldRead/extractAmount`，只判定不写库。
 > ⚠️ probe 的分隔符用 `#`：adb shell 会把 `|` 当管道、空格当参数拆分，都会截断（踩过）。
@@ -134,6 +135,7 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 | **升级不丢数据（v1.2.0 → v1.2.1）** | 覆盖安装前后 `txnCount=31`、`balances=1:0, 2:-121210, 3:123456` 一字不差；versionCode 10200→10201 |
 | **抓取准确率（v1.2.1 规则）** | 读屏只在页面切换+结果页触发；账单提醒/额度/营销渠道拦掉；≥3 笔金额判列表页；通知无结构证据与所有读屏来源置信度封顶 79 |
 | **抓取按 App 性质分级（v1.2.2）** | 真机 probe：抖音「9.9元包邮」拦 / 抖音「支付成功 ¥12.90」抓 / 淘宝「925银」拦且金额=0 / 京东「订单支付成功 199」抓 / 招行「本期账单」拦 / 招行真实消费 87.13 抓 / 微信「已扣费¥2.00」抓 |
+| **信用卡还款 = 资金转移（v1.2.5）** | simulate:cmb.pb#招商银行#您尾号8888信用卡还款成功，金额1000.00元 → 跳过信用卡还款（未建信用卡账户…），不记账；普通消费 快捷支付扣款 3.00 元 → 抓取成功 金额=300 进待确认 |
 | **业务语义排除（v1.2.4）** | probe：招行「信用卡还款成功 1000 元」→ 拦；「账单分期成功」→ 拦；微信「支付成功 ¥10.00」→ 抓且 90 分自动入账；招行「快捷支付扣款 10.00」→ 抓且 90 分 |
 | **抓取黑名单** | 点待确认行 🚫 → 日志 `加入抓取黑名单：cmb.pb|` → `blocklist=1` → 页面出现「已屏蔽的来源」→「全部恢复」后归 0（测试后已恢复，别留） |
 | **升级保留配置（v1.2.1→v1.2.2）** | `DIAG settings aiEnabled=true model=sc-deepseek-flash apiBase=https://litellm.southchips.net/ key=len=25 …` 升级前后一致；`txnCount=28`、余额不变 |

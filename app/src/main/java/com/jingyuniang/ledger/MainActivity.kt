@@ -242,6 +242,37 @@ class MainActivity : ComponentActivity() {
                                 "自动入账=${eff >= threshold}）"
                         )
                     }
+                    cmd.startsWith("simulate:") -> {
+                        // 走**完整流水线**（会写库），用来验证「这条到底记没记、记成什么」
+                        // 用法：simulate:cmb.pb#招商银行#您尾号8888信用卡还款成功，金额1000.00元
+                        val raw = cmd.removePrefix("simulate:")
+                        val parts = raw.split("#")
+                        val pkg = parts.getOrNull(0).orEmpty()
+                        val title = parts.getOrNull(1).orEmpty()
+                        val text = parts.drop(2).joinToString("#")
+                        com.jingyuniang.ledger.util.AppLog.d("DIAG simulate pkg=$pkg title=$title text=$text")
+                        lifecycleScope.launch {
+                            val id = com.jingyuniang.ledger.capture.CapturePipeline.process(
+                                com.jingyuniang.ledger.data.TxnSource.NOTIFY,
+                                pkg.ifBlank { null },
+                                pkg.ifBlank { "unknown" },
+                                title,
+                                text
+                            )
+                            com.jingyuniang.ledger.util.AppLog.d("DIAG simulate => captureId=${id ?: "null(被丢弃)"}")
+                            dumpStateAsync("after-simulate")
+                        }
+                    }
+                    cmd.startsWith("delcap:") -> {
+                        val id = cmd.removePrefix("delcap:").toLongOrNull() ?: 0L
+                        val c = com.jingyuniang.ledger.Services.repo.captureDao.all().firstOrNull { it.id == id }
+                        if (c == null) {
+                            com.jingyuniang.ledger.util.AppLog.w("DIAG delcap 找不到 #$id")
+                        } else {
+                            com.jingyuniang.ledger.Services.repo.captureDao.delete(c)
+                            com.jingyuniang.ledger.util.AppLog.d("DIAG delcap #$id 已删除")
+                        }
+                    }
                     cmd == "captures" -> {
                         // 自检：列出最近 12 条抓取记录（含 id / 状态），用于排查「这条为什么没入账」
                         val list = com.jingyuniang.ledger.Services.repo.captureDao.all()
