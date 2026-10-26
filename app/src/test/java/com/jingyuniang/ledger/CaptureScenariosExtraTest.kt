@@ -2,6 +2,7 @@
 
 import com.jingyuniang.ledger.capture.CaptureFilters
 import com.jingyuniang.ledger.capture.ParseEngine
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -237,5 +238,32 @@ class CaptureScenariosExtraTest {
     @Test
     fun `扩展场景数量不少于 80`() {
         assertTrue("只有 ${cases.size} 条", cases.size >= 80)
+    }
+    // ================= 多渠道同一笔：渠道识别 =================
+    @Test
+    fun `识别银行通知属于哪个第三方支付渠道`() {
+        assertEquals("wechat", CaptureFilters.payChannelOf("财付通-微信支付-瑞幸咖啡"))
+        assertEquals("wechat", CaptureFilters.payChannelOf("微信支付扣款 25.00"))
+        assertEquals("alipay", CaptureFilters.payChannelOf("支付宝-美团外卖"))
+        assertEquals("unionpay", CaptureFilters.payChannelOf("云闪付扫码支付"))
+        assertEquals("jd", CaptureFilters.payChannelOf("京东支付"))
+        assertEquals(null, CaptureFilters.payChannelOf("您账户3979在沃尔玛消费 48.00 元"))
+        // 渠道 → App 包名
+        assertEquals("com.tencent.mm", CaptureFilters.payChannelPackage("wechat"))
+        assertEquals("com.eg.android.AlipayGphone", CaptureFilters.payChannelPackage("alipay"))
+        assertEquals(null, CaptureFilters.payChannelPackage("unknown"))
+    }
+
+    @Test
+    fun `微信付款扣银行卡的两种通知都能识别`() {
+        // 微信侧：只有金额，没有渠道字样
+        assertTrue(CaptureFilters.shouldRead("com.tencent.mm", "支付成功，已支付¥25.00元", "微信支付"))
+        // 银行侧：写明财付通 → 可判定是微信那笔
+        val bankText = "您账户3979于10月26日14:05在【财付通-微信支付-瑞幸咖啡】发生快捷支付扣款，人民币25.00元"
+        assertTrue(CaptureFilters.shouldRead("cmb.pb", bankText, "招商银行"))
+        assertEquals("wechat", CaptureFilters.payChannelOf(bankText))
+        // 纯线下刷卡（无第三方渠道字样）→ 不会被误判成微信那笔
+        val offline = "您账户3979于10月26日14:05在【沃尔玛】消费人民币25.00元"
+        assertEquals(null, CaptureFilters.payChannelOf(offline))
     }
 }

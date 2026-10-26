@@ -425,6 +425,28 @@ object CaptureFilters {
         val contentPackages: Set<String> get() = CONTENT_PACKAGES
     }
 
+    /**
+     * 这条文本指向哪个第三方支付渠道（用于「微信付款但实际扣银行卡」时合并两条通知）。
+     * 银行动账短信/推送里通常写明「财付通-微信支付-商户」「支付宝-商户」，这是最可靠的跨渠道线索。
+     */
+    fun payChannelOf(text: String): String? {
+        // 注意顺序：先判断「微信支付/财付通」，再判断「支付宝」（两者不会同时出现）
+        if (text.contains("财付通") || text.contains("微信支付") || text.contains("微信-")) return "wechat"
+        if (text.contains("支付宝")) return "alipay"
+        if (text.contains("云闪付") || text.contains("银联")) return "unionpay"
+        if (text.contains("京东支付")) return "jd"
+        return null
+    }
+
+    /** 该渠道对应的 App 包名（用来找「同渠道 App 是否已经报过同一笔」） */
+    fun payChannelPackage(channel: String): String? = when (channel) {
+        "wechat" -> "com.tencent.mm"
+        "alipay" -> "com.eg.android.AlipayGphone"
+        "unionpay" -> "com.unionpay"
+        "jd" -> "com.jd.jrapp"
+        else -> null
+    }
+
     /** 微信聊天里「我转你 100」这类也会冒出金额，做一层收紧 */
     fun wechatLikelyPayment(text: String): Boolean {
         if (!text.contains('元') && !text.contains('¥') && !text.contains('￥')) return false

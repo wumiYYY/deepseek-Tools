@@ -21,6 +21,13 @@ object CapturePipeline {
     private const val TXN_DEDUPE_WINDOW = 60_000L
 
     /**
+     * 「同一支付渠道」的合并窗口：微信 App 实时通知 vs 银行延迟通知，最长可能差几分钟。
+     * 只在能证明「这条是某渠道的扣款」时才用这么长的窗口（见 payChannelOf），
+     * 避免误合「同金额的两笔真实消费」。
+     */
+    private const val CHANNEL_DEDUPE_WINDOW = 600_000L
+
+    /**
      * 最终置信度 = 解析分 + 抓取来源/证据校正。
      * 提成纯函数是为了让 `diag probe:` 能打印「如果现在收到这条通知，最终会得多少分、会不会自动入账」。
      *
@@ -140,13 +147,32 @@ object CapturePipeline {
         // 2) 与「已入账账目」去重：只挡**跨渠道**的同一笔（微信通知 + 银行短信各来一条）
         //    同来源、同金额、短时间内的两笔，可能是真实的两笔消费（连买两杯同价咖啡），
         //    不能一律当重复 —— 同来源的重复由上面的 dedupeKey（150s）负责。
-        // 跨渠道同一笔：微信通知 + 银行通知都算 NOTIFY，用「包名不同 + 同金额 + 60s」判断
+        // 【跨渠道同一笔 · 短窗】不同 App、同金额、60s 内 → 同一笔（实时到达的两条）
         val cross = repo.captureDao.countCrossSourceSimilar(
             parsed.amountCents, now - TXN_DEDUPE_WINDOW, pkg ?: ""
         )
         if (cross > 0) {
             AppLog.d("跨渠道同一笔（另一 App 在 60s 内报了同金额 ${parsed.amountCents}），已跳过")
             return null
+        }
+
+        // 【跨渠道同一笔 · 长窗】典型场景：**微信付款，但实际扣的是银行卡**。
+        // 银行动账通知常延迟 1~5 分钟，60s 兜不住 → 会记两条。
+        // 银行通知里通常写明「财付通-微信支付-商户」「支付宝-商户」，据此判断这条其实是某渠道的扣款，
+        // 再去问「那个 App 最近 10 分钟有没有报过同金额」。命中即视为同一笔。
+        // 注意：只对「不是该渠道 App 自己发的通知」生效，否则会把同渠道的两笔真实消费误合。
+        val channel = CaptureFilters.payChannelOf(full)
+        val channelPkg = channel?.let { CaptureFilters.payChannelPackage(it) }
+        if (channelPkg != null && channelPkg != pkg) {
+            val dup = repo.captureDao.countFromPkgSince(
+                channelPkg, parsed.amountCents, now - CHANNEL_DEDUPE_WINDOW
+            )
+            if (dup > 0) {
+                AppLog.d(
+                    "跨渠道同一笔（${channel} 已在 10 分钟内报过同金额 ${parsed.amountCents}），已跳过"
+                )
+                return null
+            }
         }
 
         val ledgerId = currentLedgerId()

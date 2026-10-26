@@ -267,6 +267,15 @@ interface CaptureDao {
     suspend fun prune(before: Long)
 
     /**
+     * 某个渠道 App 在时间窗内是否报过同金额（用于「微信付款 + 银行扣款」同一笔的长窗合并）。
+     */
+    @Query(
+        "SELECT COUNT(*) FROM capture WHERE pkg = :pkg AND amountCents = :amount " +
+            "AND time >= :since AND status != 'IGNORED'"
+    )
+    suspend fun countFromPkgSince(pkg: String, amount: Long, since: Long): Int
+
+    /**
      * 跨渠道同一笔：同金额、不同来源 App、时间窗内。
      * 微信通知和招行通知都算 NOTIFY，靠 source 区分不了，只能靠包名。
      */
