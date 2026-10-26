@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.ui
+﻿package com.jingyuniang.ledger.ui
 
 import android.Manifest
 import android.os.Build
@@ -467,12 +467,14 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
             text = {
                 Column {
                     Text(
-                        "「$appName」这类通知以后不再抓。\n可随时在下方「已屏蔽的来源」里恢复。",
+                        "⚠️ 屏蔽整个 App 会**连它的付款通知一起屏蔽**（比如招行的真实动账）。\n" +
+                            "只想挡住广告的话，选下面的「只屏蔽含某个关键词的」更稳。\n" +
+                            "屏蔽后随时可以在「已屏蔽的来源」里恢复。",
                         color = p.sub, fontSize = 12.sp, lineHeight = 18.sp
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "屏蔽整个 App：$appName",
+                        "屏蔽整个 App（含它的付款通知）：$appName",
                         color = p.text, fontSize = 12.sp,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -491,7 +493,7 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
                     if (kw.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "只屏蔽含「$kw」的",
+                            "只屏蔽含「$kw」的通知（推荐）",
                             color = p.text, fontSize = 12.sp,
                             modifier = Modifier
                                 .fillMaxWidth()

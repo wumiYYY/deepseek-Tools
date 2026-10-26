@@ -1,4 +1,4 @@
-package com.jingyuniang.ledger.capture
+﻿package com.jingyuniang.ledger.capture
 
 import com.jingyuniang.ledger.Services
 import com.jingyuniang.ledger.data.Account
@@ -17,7 +17,42 @@ import com.jingyuniang.ledger.util.AppLog
 object CapturePipeline {
 
     private const val DEDUPE_WINDOW = 150_000L
+    // 与「已入账账目」的去重窗口：只用来挡「同一笔被两个渠道各记一次」（微信通知 + 银行短信）
     private const val TXN_DEDUPE_WINDOW = 180_000L
+
+    /**
+     * 最终置信度 = 解析分 + 抓取来源/证据校正。
+     * 提成纯函数是为了让 `diag probe:` 能打印「如果现在收到这条通知，最终会得多少分、会不会自动入账」。
+     *
+     * 规则：
+     * - 读屏（ACCESS）永远封顶 79 → 只进待确认，绝不自动入账
+     * - 通知：有结构证据（尾号/账户/余额/单号/商户…）就按原分；
+     *   没有证据，但确实是「支付发送方 + 强支付模板」（微信支付/支付宝的常见通知）→ 也按原分；
+     *   两者皆无 → 封顶 79
+     * - 聊天类：标题不是支付发送方（即群消息/私聊）才降 20
+     */
+    fun effectiveConfidence(
+        source: TxnSource,
+        pkg: String?,
+        title: String,
+        text: String,
+        base: Int
+    ): Int {
+        var conf = base
+        val hasEvidence = CaptureFilters.hasTxnEvidence(text)
+        val paySender = CaptureFilters.isPaySourceTitle(title) ||
+            (pkg != null && CaptureFilters.isPayRail(pkg))
+        val strongTpl = CaptureFilters.isStrongPayTemplate(text)
+        if (source == TxnSource.ACCESS) {
+            conf = minOf(conf, 79)
+        } else if (source == TxnSource.NOTIFY && !hasEvidence && !(paySender && strongTpl)) {
+            conf = minOf(conf, 79)
+        }
+        val chatPenalty = pkg != null && CaptureFilters.isChatApp(pkg) &&
+            !CaptureFilters.isPaySourceTitle(title)
+        if (chatPenalty) conf = (conf - 20).coerceAtLeast(0)
+        return conf.coerceIn(0, 99)
+    }
 
     suspend fun process(
         source: TxnSource,
@@ -68,16 +103,16 @@ object CapturePipeline {
 
         val raw = ParseEngine.parse(pkg, appName, full, accounts, categories, rules, merchantRules)
             ?: return null
-        // 置信度封顶（宁可多问一次，不要错记账）：
+        // 置信度封顶（宁可多问一次，但**不能把真账单也压成待确认**）：
         //   · 读屏（ACCESS）永远不自动入账 → 封顶 79（默认阈值 80）
-        //   · 通知里没有「结构证据」（余额/单号/商户/尾号）→ 也封顶 79
+        //   · 通知：有「结构证据」（尾号/账户/余额/单号/商户…）→ 保持原分，正常自动入账
+        //           没有结构证据，但确实是「支付发送方 + 强支付模板」→ 也放行（微信支付/支付宝的常规通知）
+        //           两者都不满足 → 封顶 79，进待确认
         //   · 聊天类转发文本再降 20
         //   · 短信是最可靠的来源，保持原分
-        var conf = raw.confidence
-        if (source == TxnSource.ACCESS) conf = minOf(conf, 79)
-        if (source == TxnSource.NOTIFY && !CaptureFilters.hasTxnEvidence(full)) conf = minOf(conf, 79)
-        if (pkg != null && CaptureFilters.isChatApp(pkg)) conf = (conf - 20).coerceAtLeast(0)
-        val parsed = raw.copy(confidence = conf.coerceIn(0, 99))
+        val parsed = raw.copy(
+            confidence = effectiveConfidence(source, pkg, title, full, raw.confidence)
+        )
         val now = System.currentTimeMillis()
 
         // 1) 抓取去重：同来源 + 同金额，2.5 分钟内只认一次
@@ -86,10 +121,12 @@ object CapturePipeline {
             AppLog.d("重复抓取，已跳过")
             return null
         }
-        // 2) 与自动入账的账目去重（通知 + 短信常常同笔重复）
+        // 2) 与「已入账账目」去重：只挡**跨渠道**的同一笔（微信通知 + 银行短信各来一条）
+        //    同来源、同金额、短时间内的两笔，可能是真实的两笔消费（连买两杯同价咖啡），
+        //    不能一律当重复 —— 同来源的重复由上面的 dedupeKey（150s）负责。
         val similar = repo.txnDao.findSimilar(parsed.amountCents, now - TXN_DEDUPE_WINDOW)
-        if (similar != null && similar.source != TxnSource.MANUAL) {
-            AppLog.d("与已有自动账目重复，已跳过")
+        if (similar != null && similar.source != TxnSource.MANUAL && similar.source != source) {
+            AppLog.d("跨渠道同一笔（已有 ${similar.source} 记录），已跳过：${parsed.amountCents}")
             return null
         }
 

@@ -233,4 +233,66 @@ class CaptureFiltersTest {
         assertFalse(CaptureFilters.isContentApp("cmb.pb"))
         assertTrue(CaptureFilters.isWatchedApp("com.ss.android.ugc.aweme"))
     }
+    // ---------- 外部参考对齐：业务语义排除（bank-sms-parser 的 hard exclusion） ----------
+
+    @Test
+    fun `信用卡还款不是消费也不是退款`() {
+        assertFalse(
+            CaptureFilters.shouldRead(
+                "cmb.pb", "您尾号8888信用卡还款成功，金额 1000.00 元", "招商银行"
+            )
+        )
+        assertFalse(
+            CaptureFilters.shouldRead(
+                "com.android.mms", "【招商银行】您信用卡自动还款 1,000.00 元，已还款", "95555"
+            )
+        )
+    }
+
+    @Test
+    fun `账单分期不能当新消费重复计`() {
+        assertFalse(
+            CaptureFilters.shouldRead(
+                "cmb.pb", "您的账单分期成功，本期应还 500.00 元", "招商银行"
+            )
+        )
+        // 但真的分期付款买东西（第一次扣款）不能误杀
+        assertTrue(
+            CaptureFilters.shouldRead(
+                "cmb.pb", "您账户3979发生快捷支付扣款，人民币3999.00元，商户：Apple Store", "招商银行"
+            )
+        )
+    }
+
+    @Test
+    fun `已确认有效的自有规则仍然成立`() {
+        // 规格数字不是金额
+        assertEquals(0L, com.jingyuniang.ledger.capture.ParseEngine.extractAmount("欧泊吊坠 925银精工镶嵌"))
+        // 内容类 App 的推送不抓
+        assertFalse(CaptureFilters.shouldRead("com.ss.android.ugc.aweme", "9.9元包邮！爆款直降", "抖音"))
+        // 微信支付通知要抓
+        assertTrue(CaptureFilters.shouldRead("com.tencent.mm", "支付成功，已支付¥25.00元", "微信支付"))
+        // 微信「已扣费」也要抓（真机样本）
+        assertTrue(CaptureFilters.shouldRead("com.tencent.mm", "[12条]微信支付: 已扣费¥2.00", "微信支付"))
+        // 群里的银行短信转发不抓
+        assertFalse(
+            CaptureFilters.shouldRead(
+                "com.tencent.mm", "老张:您尾号8888账户消费人民币48.00元，余额1,234.56元", "家人群"
+            )
+        )
+        // 银行真实动账要抓
+        assertTrue(
+            CaptureFilters.shouldRead(
+                "cmb.pb",
+                "您账户3979于10月26日11:49在【财付通-微信支付-优之膳】发生快捷支付扣款，人民币10.00元",
+                "招商银行"
+            )
+        )
+        // 账单列表页整段丢弃
+        assertFalse(
+            CaptureFilters.shouldRead(
+                "com.eg.android.AlipayGphone", "支付 25.00 元 支付 38.50 元 支付 12.00 元", "账单"
+            )
+        )
+    }
 }

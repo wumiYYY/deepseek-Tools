@@ -225,10 +225,48 @@ class MainActivity : ComponentActivity() {
                                 "listPage=${cf.looksLikeStatementList(text)} amounts=${cf.amountCount(text)} " +
                                 "evidence=${cf.hasTxnEvidence(text)} resultPage=${cf.isPaymentResultPage(text)}"
                         )
-                        com.jingyuniang.ledger.util.AppLog.d(
-                            "DIAG probe => shouldRead=${cf.shouldRead(pkg, text, title)} title=${title.ifBlank { "(none)" }} " +
-                                "extractAmount=${pe.extractAmount(text)}"
+                        val should = cf.shouldRead(pkg, text, title)
+                        val base = 40 + 20 + 15 + 10 + 5   // 典型通知的粗基准（方向/账户/分类/动词），仅作参考
+                        val eff = com.jingyuniang.ledger.capture.CapturePipeline.effectiveConfidence(
+                            com.jingyuniang.ledger.data.TxnSource.NOTIFY, pkg, title, text, base
                         )
+                        val threshold = com.jingyuniang.ledger.Services.settings.value.autoBookThreshold
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG probe => shouldRead=$should title=${title.ifBlank { "(none)" }} " +
+                                "extractAmount=${pe.extractAmount(text)} " +
+                                "evidence=${cf.hasTxnEvidence(text)} paySender=${cf.isPaySourceTitle(title)} " +
+                                "strongTpl=${cf.isStrongPayTemplate(text)}"
+                        )
+                        com.jingyuniang.ledger.util.AppLog.d(
+                            "DIAG probe => 参考置信度 base=$base → 校正后=$eff（阈值 $threshold，" +
+                                "自动入账=${eff >= threshold}）"
+                        )
+                    }
+                    cmd == "captures" -> {
+                        // 自检：列出最近 12 条抓取记录（含 id / 状态），用于排查「这条为什么没入账」
+                        val list = com.jingyuniang.ledger.Services.repo.captureDao.all()
+                            .sortedByDescending { it.time }.take(12)
+                        list.forEach { c ->
+                            com.jingyuniang.ledger.util.AppLog.d(
+                                "DIAG capture #${c.id} status=${c.status} src=${c.source} pkg=${c.pkg} " +
+                                    "amt=${c.amountCents} conf=${c.confidence} txn=${c.txnId} " +
+                                    "text=${c.rawText.take(60)}"
+                            )
+                        }
+                        com.jingyuniang.ledger.util.AppLog.d("DIAG captures total=${list.size}")
+                    }
+                    cmd.startsWith("restorecap:") -> {
+                        // 把被误「忽略」的抓取恢复成待确认（用户能再确认入账）
+                        val id = cmd.removePrefix("restorecap:").toLongOrNull() ?: 0L
+                        val c = com.jingyuniang.ledger.Services.repo.captureDao.all().firstOrNull { it.id == id }
+                        if (c == null) {
+                            com.jingyuniang.ledger.util.AppLog.w("DIAG restorecap 找不到 #$id")
+                        } else {
+                            com.jingyuniang.ledger.Services.repo.captureDao.update(
+                                c.copy(status = com.jingyuniang.ledger.data.CaptureStatus.PENDING)
+                            )
+                            com.jingyuniang.ledger.util.AppLog.d("DIAG restorecap #$id → PENDING")
+                        }
                     }
                     cmd == "settings" -> {
                         // 自检：升级前后对比配置是否被保住（Key 只打掩码，不落日志）

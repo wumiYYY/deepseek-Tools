@@ -154,7 +154,14 @@ object CaptureFilters {
         "限时", "特惠", "领券", "领取", "秒杀", "抢购", "升级有礼",
         // 电商/内容推送
         "包邮", "直降", "上新", "直播间", "猜你喜欢", "为你推荐", "浏览", "收藏", "加购",
-        "订单已发货", "已发货", "待收货", "物流"
+        "订单已发货", "已发货", "待收货", "物流",
+        "小荷包", "支付红包", "消费红包", "立减金", "返现红包", "红包雨",
+        // 业务语义：还款/分期不是「一笔新消费」
+        // 见 docs/CAPTURE_RULES.md —— 业界共识（bank-sms-parser 的 hard exclusion）：
+        //   ① 信用卡还款不是消费，也不是退款；② 把已有消费转成分期会重复计
+        "信用卡还款", "还款成功", "还款入账", "已还款", "自动还款",
+        // 注意：只排除「把已有消费重新分期」的，不排除「分期付款成功」——那可能是真的一笔支付
+        "账单分期", "分期成功", "转为分期", "已分期"
     )
 
     /** 真正的动账证据：有这些词才可能是账单，没有就是广告 */
@@ -178,7 +185,7 @@ object CaptureFilters {
      * 至少要有其中一项，否则金额再大也只当可疑（进待确认，不自动入账）。
      */
     private val TXN_EVIDENCE = listOf(
-        "尾号", "交易单号", "流水号", "订单号", "商户", "收款方", "付款方", "商家",
+        "尾号", "账户", "卡号", "交易单号", "流水号", "订单号", "商户", "收款方", "付款方", "商家",
         "交易时间", "可用额度", "账户余额", "当前余额", "余额为", "余额为人民币", "余额",
         "实时", "已入账", "已到账"
     )
@@ -251,6 +258,13 @@ object CaptureFilters {
 
     /** 账单列表页 / 明细页：一屏里出现多笔金额，绝不是「一条交易通知」 */
     fun looksLikeStatementList(text: String): Boolean = amountCount(text) >= 3
+
+    /** 文本是否命中「强支付模板」（支付成功/已付款/已扣费…） */
+    fun isStrongPayTemplate(text: String): Boolean = STRICT_PAY_TEMPLATE.any { text.contains(it) }
+
+    /** 通知标题是否是支付发送方（「微信支付」「支付宝」「招商银行」…） */
+    fun isPaySourceTitle(title: String): Boolean =
+        title.isNotBlank() && PAY_SOURCE_MARKERS.any { title.contains(it) }
 
     /** 有结构证据？没有就说明只是「一句带金额的话」，最多进待确认 */
     fun hasTxnEvidence(text: String): Boolean = TXN_EVIDENCE.any { text.contains(it) }
