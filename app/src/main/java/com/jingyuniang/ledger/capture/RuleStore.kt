@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.capture
+package com.jingyuniang.ledger.capture
 
 import android.content.Context
 import com.jingyuniang.ledger.Services
@@ -213,6 +213,51 @@ object RuleStore {
         true
     }.getOrDefault(false)
 
+    // ---------------- 单张表的读写（「说人话版规则」用来原地加词） ----------------
+
+    /** 18 张表的 JSON 键名，顺序与设置页展示一致 */
+    val TABLE_KEYS: List<String> = listOf(
+        "adMarkers", "nonTxnMarkers", "fundTransferMarkers", "strongPayTemplate",
+        "txnEvidence", "payEvidence", "paySourceMarkers", "transferMarkers",
+        "bankTextMarkers", "strongHints", "marketingChannels", "payRailPackages",
+        "commercePackages", "contentPackages", "junk", "specUnits",
+        "incomeWords", "expenseWords"
+    )
+
+    /** 某张表当前有多少条词（UI 展示用；键名不认识返回 0） */
+    fun countOf(key: String, rules: Rules = current): Int = rules.table(key)?.size ?: 0
+
+    /**
+     * 往规则里加词并**立即生效**（写用户规则文件 + 更新缓存）。
+     * @return null = 成功；否则是失败原因
+     */
+    fun addWords(context: Context, tableKey: String, words: List<String>): String? {
+        val base = current
+        val next = base.appendWords(tableKey, words) ?: return "没有这张规则表：$tableKey"
+        if (next === base) return null // 词已经在表里，算成功
+        next.validate()?.let { return "改完的规则没通过自检：$it" }
+        return runCatching {
+            userFile(context).writeText(exportJson(next))
+            cached = next
+            AppLog.i("规则加词：$tableKey +${words.joinToString("/")}（共 ${next.totalEntries} 条）")
+            null
+        }.getOrElse { "写入失败：${it.message}" }
+    }
+
+    /** 从规则里删词并立即生效。@return null = 成功 */
+    fun removeWord(context: Context, tableKey: String, word: String): String? {
+        val base = current
+        val next = base.removeWord(tableKey, word) ?: return "没有这张规则表：$tableKey"
+        if (next === base) return null
+        next.validate()?.let { return "改完的规则没通过自检：$it" }
+        return runCatching {
+            userFile(context).writeText(exportJson(next))
+            cached = next
+            AppLog.i("规则删词：$tableKey -$word（共 ${next.totalEntries} 条）")
+            null
+        }.getOrElse { "写入失败：${it.message}" }
+    }
+
     // ---------------- 代码内兜底（与 assets 同内容；assets 正常时用不到） ----------------
     val DEFAULTS: Rules = Rules(
         source = "代码默认",
@@ -327,4 +372,78 @@ object RuleStore {
             "支出", "消费", "付款", "支付", "扣款", "购买", "实付", "已支付", "缴费", "转出"
         )
     )
+}
+
+// ---------------- 单张表的读写（放在 object 外：UI 与测试都不用写 with(RuleStore){…}） ----------------
+//
+// 「说人话的规则」靠这几个函数原地加/删一个词，而不是让用户去改 490 行 JSON。
+// 全部是纯函数（不碰文件、不碰 Context），写盘在 RuleStore.addWords / removeWord 里做。
+
+/** 取某张表的词表；键名不认识返回 null（不抛异常，UI 层要能容错） */
+fun RuleStore.Rules.table(key: String): List<String>? = when (key) {
+    "adMarkers" -> adMarkers
+    "nonTxnMarkers" -> nonTxnMarkers
+    "fundTransferMarkers" -> fundTransferMarkers
+    "strongPayTemplate" -> strongPayTemplate
+    "txnEvidence" -> txnEvidence
+    "payEvidence" -> payEvidence
+    "paySourceMarkers" -> paySourceMarkers
+    "transferMarkers" -> transferMarkers
+    "bankTextMarkers" -> bankTextMarkers
+    "strongHints" -> strongHints
+    "marketingChannels" -> marketingChannels
+    "payRailPackages" -> payRailPackages
+    "commercePackages" -> commercePackages
+    "contentPackages" -> contentPackages
+    "junk" -> junk
+    "specUnits" -> specUnits
+    "incomeWords" -> incomeWords
+    "expenseWords" -> expenseWords
+    else -> null
+}
+
+/** 换掉某张表的词表；键名不认识返回 null */
+fun RuleStore.Rules.withTable(key: String, values: List<String>): RuleStore.Rules? = when (key) {
+    "adMarkers" -> copy(adMarkers = values)
+    "nonTxnMarkers" -> copy(nonTxnMarkers = values)
+    "fundTransferMarkers" -> copy(fundTransferMarkers = values)
+    "strongPayTemplate" -> copy(strongPayTemplate = values)
+    "txnEvidence" -> copy(txnEvidence = values)
+    "payEvidence" -> copy(payEvidence = values)
+    "paySourceMarkers" -> copy(paySourceMarkers = values)
+    "transferMarkers" -> copy(transferMarkers = values)
+    "bankTextMarkers" -> copy(bankTextMarkers = values)
+    "strongHints" -> copy(strongHints = values)
+    "marketingChannels" -> copy(marketingChannels = values)
+    "payRailPackages" -> copy(payRailPackages = values)
+    "commercePackages" -> copy(commercePackages = values)
+    "contentPackages" -> copy(contentPackages = values)
+    "junk" -> copy(junk = values)
+    "specUnits" -> copy(specUnits = values)
+    "incomeWords" -> copy(incomeWords = values)
+    "expenseWords" -> copy(expenseWords = values)
+    else -> null
+}
+
+/**
+ * 往某张表里追加词（去空白、去重、保持原顺序）。
+ * 全是重复词时返回 [this]（调用方用 `===` 判断"什么都没变"）；键名错返回 null。
+ */
+fun RuleStore.Rules.appendWords(key: String, words: List<String>): RuleStore.Rules? {
+    val cur = table(key) ?: return null
+    val add = words.map { it.trim() }.filter { it.isNotBlank() }
+    if (add.isEmpty()) return this
+    val merged = LinkedHashSet(cur)
+    val before = merged.size
+    add.forEach { merged.add(it) }
+    if (merged.size == before) return this
+    return withTable(key, merged.toList())
+}
+
+/** 从某张表里删掉一个词（用户加错了要能撤回）；词不在表里返回 [this] */
+fun RuleStore.Rules.removeWord(key: String, word: String): RuleStore.Rules? {
+    val cur = table(key) ?: return null
+    val next = cur.filter { it != word }
+    if (next.size == cur.size) return this
+    return withTable(key, next)
 }

@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.ui
+package com.jingyuniang.ledger.ui
 
 import android.content.Context
 import android.content.Intent
@@ -366,6 +366,10 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
                 }
             }
         }
+
+        // 「说人话的规则」：不用读 JSON，说出症状就能加词（Backlog P1）
+        Spacer(Modifier.height(10.dp))
+        RuleGuideCard(ctx)
 
         Spacer(Modifier.height(10.dp))
         WhaleCard {
