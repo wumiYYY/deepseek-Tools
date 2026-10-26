@@ -12,7 +12,7 @@
 |---|---|
 | 版本 | **v1.4.1**（versionCode **10401**，数据库 schema **v2**，未动 schema） |
 | 提交 | `main` HEAD 见 `git log -1`（本会话 4 个提交 + tag `v1.4.0`、`v1.4.1`，已 push GitHub） |
-| CI | 本地 `:app:testDebugUnitTest` **120 个全绿**；GitHub Actions 待确认（红灯不许合） |
+| CI | ✅ 绿（GitHub Actions：`单元测试（120 个）` + `规则文件校验`）；2026-10-26 修过一次红灯，见 §6.28 |
 | 产物 | `dist/1.4.1/鲸鱼娘金库-v1.4.1.apk`（24.58 MB，仅 arm64-v8a，sha256 `0ede13c6…1c6c`；v2 签名指纹 = `e7962e34…1975`） |
 | 设备 | **用户手机已装 v1.4.1**（从 v1.3.2 升上来，走的是「说人话的规则」真机回归那轮测试） |
 | 真实账本 | 30 笔、`pendingCaptures=0`、`blocklist=0`；**与升级前一字不差**（见 §5） |
@@ -223,6 +223,15 @@ app/src/main/
     自填词在卡片底部，提示画在顶部也一样看不到。两处都踩过。
 27. **`probe` 做 A/B 时慎用英文字母开头紧贴数字**：`ZZQ5元` 的 `extractAmount=0`（被当编号前缀），
     要用中文 token，或让数字跟在「消费/支付」这类汉字后面。
+28. **CI 秒挂（整个 job 25s 就 Failure）要先怀疑 action 版本，不是代码**：2026-10-26 那次红灯是
+    `android-actions/setup-android@v3` —— 它会去下载 Google 早已下架的旧 cmdline-tools 包，直接 404；
+    `@v4.0.2` 的更新说明就是 "Fix for removed tools package"。同批把 `gradle/actions/setup-gradle@v3` 升到 `@v6`。
+    **判据**：`规则文件校验` 那种纯 python 的 job 绿、只有一个要装 SDK 的 job 红，且红 job 只跑了 20 多秒
+    → 一定是 action 层。workflow 里已加「环境自检」步骤（java/ANDROID_HOME/platforms/gradlew --version），
+    下次挂了日志能直接定位，不用再靠猜。
+29. 看 CI 状态：`gh` 没装、匿名 API 60 次/小时会 403，**徽章是最省事的**：
+    `https://github.com/wumiYYY/deepseek-Tools/actions/workflows/ci.yml/badge.svg?branch=main&event=push`
+    —— 返回的 SVG 里 `<title>CI - passing</title>` 就是结论。
 
 ---
 
