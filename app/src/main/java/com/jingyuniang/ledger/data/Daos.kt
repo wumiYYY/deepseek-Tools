@@ -88,6 +88,12 @@ interface TxnDao {
     @Query("SELECT * FROM txn WHERE id = :id")
     suspend fun byId(id: Long): Txn?
 
+    /** 30 天内同金额的「支出」——用来判断一条退款通知冲的是哪一笔（P1-5） */
+    @Query(
+        "SELECT * FROM txn WHERE type = 'EXPENSE' AND amountCents = :amount " +
+            "AND date >= :since ORDER BY date DESC LIMIT 1"
+    )
+    suspend fun findExpenseSameAmount(amount: Long, since: Long): Txn?
     @Query("SELECT * FROM txn WHERE amountCents = :amount AND date >= :since AND type != :excludeType AND source != 'ADJUST' ORDER BY date DESC LIMIT 1")
     suspend fun findSimilar(amount: Long, since: Long, excludeType: TxnType = TxnType.TRANSFER): Txn?
 
@@ -274,6 +280,7 @@ interface CaptureDao {
             "AND time >= :since AND status != 'IGNORED'"
     )
     suspend fun countFromPkgSince(pkg: String, amount: Long, since: Long): Int
+
 
     /**
      * 跨渠道同一笔：同金额、不同来源 App、时间窗内。

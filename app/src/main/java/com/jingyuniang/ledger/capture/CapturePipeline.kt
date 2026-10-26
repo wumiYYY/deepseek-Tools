@@ -28,6 +28,9 @@ object CapturePipeline {
      */
     private const val CHANNEL_DEDUPE_WINDOW = 600_000L
 
+    /** 退款回溯窗口：30 天内的同金额支出才可能是它冲的那笔 */
+    private const val REFUND_LOOKBACK = 30L * 24 * 60 * 60 * 1000
+
     /**
      * 最终置信度 = 解析分 + 抓取来源/证据校正。
      * 提成纯函数是为了让 `diag probe:` 能打印「如果现在收到这条通知，最终会得多少分、会不会自动入账」。
@@ -56,6 +59,8 @@ object CapturePipeline {
         } else if (source == TxnSource.NOTIFY && !hasEvidence && !strongTpl) {
             conf = minOf(conf, 79)
         }
+        // 退款：可能是冲销原支出，不该自动入账（否则收入虚增），一律进待确认
+        if (CaptureFilters.isRefund(text)) conf = minOf(conf, 79)
         val chatPenalty = pkg != null && CaptureFilters.isChatApp(pkg) &&
             !CaptureFilters.isPaySourceTitle(title)
         if (chatPenalty) conf = (conf - 20).coerceAtLeast(0)
@@ -180,6 +185,23 @@ object CapturePipeline {
             }
         }
 
+        // 【退款冲正提示】退款记成收入会让本月收入虚增；若 30 天内有同金额支出，提示用户冲掉原账
+        var reason = verdict.reason
+        if (CaptureFilters.isRefund(full) && parsed.amountCents > 0) {
+            val origin = try {
+                repo.txnDao.findExpenseSameAmount(parsed.amountCents, now - REFUND_LOOKBACK)
+            } catch (t: Throwable) {
+                AppLog.w("查询退款原账失败", t)
+                null
+            }
+            if (origin != null) {
+                reason = "疑似 #${origin.id}「${origin.note.ifBlank { origin.merchant }}」" +
+                    "（${com.jingyuniang.ledger.util.Fmt.money(origin.amountCents)}）的退款 —— 可直接「冲销原账」，不要记成收入"
+            } else {
+                reason = "退款（30 天内没找到同金额支出，可当收入记）"
+            }
+        }
+
         val ledgerId = currentLedgerId()
         val capture = Capture(
             source = source,
@@ -196,7 +218,7 @@ object CapturePipeline {
             confidence = parsed.confidence,
             time = now,
             dedupeKey = key,
-            reason = verdict.reason
+            reason = reason
         )
         val captureId = repo.captureDao.insert(capture)
         val saved = capture.copy(id = captureId)

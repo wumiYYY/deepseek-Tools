@@ -110,67 +110,18 @@ object CaptureFilters {
     )
 
     /** 真正的支付通知，标题一定是这些「发送方」，而不是群名/人名 */
-    private val PAY_SOURCE_MARKERS = listOf(
-        "微信支付", "QQ钱包", "QQ支付", "财付通", "支付宝", "云闪付", "银联",
-        "钱包", "银行", "信用卡", "储蓄卡", "动账", "交易提醒", "支付通知", "账单"
-    )
-
+    private val PAY_SOURCE_MARKERS: List<String> get() = RuleStore.current.paySourceMarkers
     /** 转账 / 红包这类「聊天里的钱卡片」：标题是对方昵称，但正文一定是这几种格式之一 */
-    private val TRANSFER_MARKERS = listOf(
-        "[转账]", "［转账］", "转账给你", "向你转账", "给你转账", "请收款", "已收款",
-        "收款到账", "你收到一笔", "[微信红包]", "［微信红包］", "[红包]", "领取了你的红包",
-        "转账已被接收", "待确认收款", "已接收你的转账", "接收你的转账", "已接收转账"
-    )
-
+    private val TRANSFER_MARKERS: List<String> get() = RuleStore.current.transferMarkers
     /** 银行短信的典型句式：出现这些词说明是「被转发进聊天群的银行文本」，绝不能记账 */
-    private val BANK_TEXT_MARKERS = listOf(
-        "尾号", "账户", "余额", "信用卡", "储蓄卡", "动账", "交易单号",
-        "人民币", "入账", "扣款", "消费人民币", "可用额度"
-    )
-
+    private val BANK_TEXT_MARKERS: List<String> get() = RuleStore.current.bankTextMarkers
     /** 营销/广告词：银行 App 天天推「4元水电券」「立减8元」，绝不能算支出 */
-    private val AD_MARKERS = listOf(
-        "券", "劵", "立减", "满减", "满赠", "优惠", "特惠", "福利", "领取", "免费领",
-        "抽奖", "活动", "限时", "到手价", "红包雨", "积分兑换", "权益", "专享", "专属",
-        "分期", "提额", "额度提升", "推荐", "最高可", "最高立减", "先领", "抢购",
-        "会员日", "补贴", "抵用", "抵扣", "礼包", "秒杀", "申请办卡",
-        // 内容/电商推送常见
-        "包邮", "直降", "上新", "直播间", "加购", "收藏", "关注我", "爆款", "清仓", "百亿补贴"
-    )
-
+    private val AD_MARKERS: List<String> get() = RuleStore.current.adMarkers
     /**
      * 「不是动账」的模板词：这些通知**一定带金额**，但它们是账单/提醒/营销，不是刚发生的交易。
      * 这是「银行推送一堆待确认」的主要来源，命中即丢。
      */
-    private val NON_TXN_MARKERS = listOf(
-        // 账单类
-        "本期账单", "账单已出", "账单日", "账单金额", "应还金额", "应还", "待还", "最低还款",
-        "还款提醒", "即将到期", "到期提醒", "逾期", "最后还款日",
-        // 额度/授信类
-        "额度调整", "额度提醒", "额度已", "提额", "预授信", "可借", "可贷", "免息",
-        // 营销/运营类
-        "优惠券", "立减", "满减", "活动", "抽奖", "签到", "积分", "权益", "福利",
-        "推荐", "开通", "申请", "邀请", "回馈", "首绑", "办卡", "加油券", "立享",
-        "限时", "特惠", "领券", "领取", "秒杀", "抢购", "升级有礼",
-        // 电商/内容推送
-        "包邮", "直降", "上新", "直播间", "猜你喜欢", "为你推荐", "浏览", "收藏", "加购",
-        "订单已发货", "已发货", "待收货", "物流",
-        "小荷包", "支付红包", "消费红包", "立减金", "返现红包", "红包雨",
-        // 业务语义：分期不是「一笔新消费」（把已有消费重新分期 → 再记一次就重复计了）
-        // 见 docs/CAPTURE_RULES.md —— 业界共识（bank-sms-parser 的 hard exclusion）
-        // 注意：还款**不在这里** —— 还款是「资金转移」（储蓄卡 → 信用卡），要记成 TRANSFER 而不是丢掉，
-        // 见 REPAYMENT_MARKERS / isRepayment()
-        // 注意：只排除「把已有消费重新分期」的，不排除「分期付款成功」——那可能是真的一笔支付
-        "账单分期", "分期成功", "转为分期", "已分期",
-        // 【外部规则对照补充】未来自动扣费 / 余额提醒 —— 都不是「刚发生的交易」
-        // 依据：bank-sms-parser 的 FUTURE_AUTO_DEBIT、BALANCE_ALERT
-        "将于", "自动扣款", "自动续费", "即将扣款", "扣款提醒", "还款日将至", "待缴", "待缴费用",
-        "余额提醒", "余额不足", "可用余额为", "余额变动提醒", "开通自动", "签约代扣",
-        // 贷款/授信类营销（带金额，但不是动账）
-        // ⚠️ 不能写裸「贷款」——「收到贷款金额人民币50000元」是真实入账，会被误杀；只拦营销说法
-        "可办理", "贷款额度", "最高可贷", "申请贷款", "授信", "预审批", "免息期"
-    )
-
+    private val NON_TXN_MARKERS: List<String> get() = RuleStore.current.nonTxnMarkers
     /**
      * 信用卡还款类：这是**资金转移**（储蓄卡 → 信用卡），不是消费。
      *
@@ -201,35 +152,29 @@ object CaptureFilters {
     /** 是不是信用卡还款（资金转移，不是消费） */
     fun isRepayment(text: String): Boolean = REPAYMENT_MARKERS.any { text.contains(it) }
 
+    /** 退款类关键词（用于 P1-5：退款应冲掉原支出，而不是新记一笔收入） */
+    private val REFUND_MARKERS = listOf(
+        "退款", "退货退款", "已退款", "退款到账", "退回", "原路退回", "冲正", "撤销交易"
+    )
+
+    /** 是不是一笔退款 */
+    fun isRefund(text: String): Boolean = REFUND_MARKERS.any { text.contains(it) }
+
     /** 是不是资金转移（还款 / 提现到卡 / 转存）——应记成 TRANSFER */
     fun isFundTransfer(text: String): Boolean = FUND_TRANSFER_MARKERS.any { text.contains(it) }
 
     /** 真正的动账证据：有这些词才可能是账单，没有就是广告 */
-    private val PAY_EVIDENCE = listOf(
-        "消费", "支出", "扣款", "支付成功", "已付款", "已扣", "存入",
-        "转入", "转账", "还款", "退款", "提现", "工资", "利息", "结息", "缴费成功"
-    )
-
+    private val PAY_EVIDENCE: List<String> get() = RuleStore.current.payEvidence
     /**
      * 强支付模板：**电商/内容类 App 只有命中这些**才可能是真动账。
      * 注意不含单独的「支付」「付款」（"支持花呗付款"这种营销会误命中）。
      */
-    private val STRICT_PAY_TEMPLATE = listOf(
-        "支付成功", "付款成功", "支付完成", "付款完成", "交易成功", "交易已完成",
-        "已支付", "已付款", "已扣费", "扣费成功", "已扣款", "扣款成功", "订单支付成功", "退款到账", "已退款", "收款到账",
-        "付款给", "你已成功付款"
-    )
-
+    private val STRICT_PAY_TEMPLATE: List<String> get() = RuleStore.current.strongPayTemplate
     /**
      * 结构证据：证明「这是一笔刚发生的交易」而不是账单/营销。
      * 至少要有其中一项，否则金额再大也只当可疑（进待确认，不自动入账）。
      */
-    private val TXN_EVIDENCE = listOf(
-        "尾号", "账户", "卡号", "交易单号", "流水号", "订单号", "商户", "收款方", "付款方", "商家", "实付", "订单",
-        "交易时间", "可用额度", "账户余额", "当前余额", "余额为", "余额为人民币", "余额",
-        "实时", "已入账", "已到账"
-    )
-
+    private val TXN_EVIDENCE: List<String> get() = RuleStore.current.txnEvidence
     /** 支付结果页的强文案（读屏只在被这些词命中时才认） */
     private val RESULT_PAGE_MARKERS = listOf(
         "支付成功", "付款成功", "交易成功", "已支付", "已付款", "付款完成", "支付完成",
@@ -237,11 +182,7 @@ object CaptureFilters {
     )
 
     /** 营销类通知渠道名（银行 App 的营销推送几乎都单独占一个渠道） */
-    private val MARKETING_CHANNELS = listOf(
-        "营销", "活动", "推荐", "推广", "优惠", "福利", "权益", "通知消息", "消息通知",
-        "market", "promo", "advert", "offer", "news"
-    )
-
+    private val MARKETING_CHANNELS: List<String> get() = RuleStore.current.marketingChannels
     /** 金额出现次数的粗计数（带单位/币符），用来识别「账单列表页」 */
     private val AMOUNT_WITH_UNIT = Regex("""(?:[¥￥]\s*\d[\d,]*(?:\.\d{1,2})?)|(?:\d[\d,]*(?:\.\d{1,2})?\s*[元块])""")
 
@@ -287,13 +228,7 @@ object CaptureFilters {
      * 微信「支付成功 / 已支付」、支付宝「你已成功付款 / 付款成功」、银行「消费 / 扣款 / 入账」。
      * 放宽的代价是可能多抓几条无关通知，但它们置信度低，只会进「待确认」，不会错记账。
      */
-    private val STRONG_HINTS = listOf(
-        "支付成功", "付款成功", "已成功付款", "成功付款", "已支付", "支付", "付款",
-        "消费", "扣款", "扣费", "已扣", "支出", "入账", "到账", "转账", "收款", "退款",
-        "交易金额", "实付", "缴费", "还款", "提现", "支付给", "付款给",
-        "转入", "存入", "扣除", "收取", "扣收", "申购", "赎回", "赞赏", "退回", "取现"
-    )
-
+    private val STRONG_HINTS: List<String> get() = RuleStore.current.strongHints
     /** 文本里「带单位的金额」出现几次（列表页一般 ≥3） */
     fun amountCount(text: String): Int = AMOUNT_WITH_UNIT.findAll(text).count()
 
@@ -434,6 +369,7 @@ object CaptureFilters {
         val payRailPackages: Set<String> get() = PAY_RAIL_PACKAGES
         val commercePackages: Set<String> get() = COMMERCE_PACKAGES
         val contentPackages: Set<String> get() = CONTENT_PACKAGES
+        val refundMarkers: List<String> get() = REFUND_MARKERS
     }
 
     /**

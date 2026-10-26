@@ -1,6 +1,6 @@
 ﻿# 抓取规则 · v1.0（定版）
 
-> 适用版本：**v1.3.0**（versionCode 10300；数据库 schema **v2**）
+> 适用版本：**v1.3.2**（versionCode 10302；数据库 schema **v2**；规则表 **可编辑 JSON**）
 > 本文是这份 App 的**抓取规则规范**：改规则前先读，改完必须让 `CaptureRuleMatrixTest` + `CaptureAllRulesTest` 全绿。
 > 规则体现在代码里（`CaptureFilters` / `ParseEngine` / `TxnIdentity`），本文与代码的一致性由测试保证。
 
@@ -136,7 +136,38 @@ adb shell am start -n com.jingyuniang.vault/com.jingyuniang.ledger.MainActivity 
 3. **自动快照**：升级后首次启动 / 每天一次 / 手动，各生成一份明文 JSON（私有目录，保留 7 份）。
 4. 迁移抛异常时**不要 backfill 一个 destructive fallback 来"修复"**：
    数据文件还在，回装旧版 APK 即可继续用；也可用 `restoredb` 压回迁移前快照。
-## 7. 规则变更流程（改之前先看这条）
+## 7. 规则库（可编辑）
+
+规则不再写死在代码里，而是 `assets/capture_rules.json`（490 条）。加载优先级：
+
+```
+filesDir/capture_rules.json    ← 用户自己改的（App 内「导入规则」或直接放文件）
+        ↓ 不存在/解析失败
+assets/capture_rules.json      ← 随 App 发布
+        ↓ 解析失败
+RuleStore.DEFAULTS             ← 代码兜底（保证 App 永远能抓）
+```
+
+**加载时校验**（任何一条不过就拒绝该文件、回退下一级）：
+- 每张表非空
+- 表里没有空词条
+- 营销词/非动账/垃圾词 各自 ≥10 条（防止文件被截断还"以为生效了"）
+
+用户入口：设置 → 数据导入导出 → 「识别规则（可自己改）」→ 导出 / 导入 / 恢复默认。
+
+**已验证**（真机对照实验）：同一段文本 `好物100元ABCXYZ`，
+用户规则里加了 `ABCXYZ` → `shouldRead=false`；恢复内置 → `shouldRead=true`。
+
+## 8. 退款（冲正，不虚增收入）
+
+退款走 `isRefund()`，处理顺序：
+
+1. 回查 **30 天内同金额的支出**（`TxnDao.findExpenseSameAmount`）
+2. 命中 → 判定原因写明 `疑似 #<txnId>「<商户>」（¥x）的退款`，待确认行出现**「冲销原账」**按钮
+3. 点「冲销原账」→ **删掉原支出** + 本条不记收入（本月支出减少，而不是收入增加）
+4. 不点 → 可正常入账为收入（用户自己判断）
+5. **退款一律封顶 79 分**，永远不自动入账 —— 冲销还是当收入，必须用户决定
+## 9. 规则变更流程（改之前先看这条）
 
 1. **改表**：只往 `CaptureFilters` / `ParseEngine` 的对应 `listOf` 里加/删，**不要**在 `shouldRead` 里散写 if
 2. **补用例**：`CaptureRuleMatrixTest` 加一条真实场景（正/反例）；遍历用例会自动覆盖新词

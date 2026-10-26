@@ -85,7 +85,8 @@ class CaptureRuleMatrixTest {
         ),
         Case(
             "建行短信·退款", "com.android.mms", "95533",
-            "【建设银行】您尾号5678账户退款到账 30.00 元", Expect.INCOME, 3000, true
+            // 退款默认进待确认：用户要能选「冲销原账」或「当收入」，不能自动入账（否则收入虚增）
+            "【建设银行】您尾号5678账户退款到账 30.00 元", Expect.INCOME, 3000, false
         ),
         Case(
             "银行短信·贷款广告（带金额）", "com.android.mms", "106835742600999",

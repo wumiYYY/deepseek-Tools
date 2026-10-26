@@ -7,7 +7,7 @@
 ## 0. 一句话现状
 
 Android 记账 App「鲸鱼娘金库」（包名 `com.jingyuniang.vault`），核心是**自动记账**（通知/短信抓取 + AI 一句话记账），UI 是二次元深蓝+鎏金女仆风。
-**当前版本 v1.3.0（versionCode 10300，数据库 schema v2）**，产物 `dist/1.3.0/鲸鱼娘金库-v1.3.0.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
+**当前版本 v1.3.2（versionCode 10302，schema v2，规则表可编辑 JSON）**，产物 `dist/1.3.2/鲸鱼娘金库-v1.3.2.apk`（24.5 MB，只含 arm64-v8a），手机已装机（**用户的真实账本 28 笔，别乱清**）。
 **抓取规则【定版】见 `docs/CAPTURE_RULES_V1.md`**（8 道闸门 + 447 条规则 + 测试覆盖）；外部参考对照见 `docs/CAPTURE_RULES.md`
 发布/版本更新流程见 `docs/RELEASE.md`，变更历史见 `CHANGELOG.md`，**给使用者的说明书是 `docs/用户指引.md`**（`release.ps1` 会自动把它放进 `dist/<版本>/`）。
 代码已入 git 并推到 `https://github.com/wumiYYY/deepseek-Tools`（`main` + tag `v1.2.0`）。
@@ -64,7 +64,7 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 > `capture:<0|1|2>` = 把示例通知喂进真实抓取流水线；`backup:<密码>` = 加密备份；
 > `restorefile:latest:<密码>` = 恢复最新一份备份（备份文件名带中文，adb 传参会丢字节，所以用 `latest`）；
 > `dump` = 打印账户 + 余额 + 最近 6 笔 + 待确认数；`del:<txnId>` = 删测试数据；
-> `snap` / `snaps` = 生成/列出自动快照；`restoredb` = 用迁移前快照压回数据库（重启生效）；`reasoncheck` = 打印最近抓取的判定原因；`dumpdb` = 把数据库复制到外部目录（adb pull 兜底）
+> `importrules` / `resetrules` = 导入/恢复用户规则（验证"改词生效"）；`exportrules` = 导出规则 JSON；`snap` / `snaps` = 生成/列出自动快照；`restoredb` = 用迁移前快照压回数据库（重启生效）；`reasoncheck` = 打印最近抓取的判定原因；`dumpdb` = 把数据库复制到外部目录（adb pull 兜底）
 > `settings` = 打印关键配置（Key 只打掩码）用于**升级前后比对配置是否保留**；
 > `diag simulate:<pkg>#<title>#<原文>` = 走完整流水线（会写库），验证「到底记没记/记成什么」；`delcap:<id>` = 删一条抓取记录；
 > `probe:<pkg>#<title>#<原文>` = **规则体检**：把任意通知原文喂进抓取闸门，日志输出
@@ -136,6 +136,8 @@ $adb = ".toolchain\android-sdk\platform-tools\adb.exe"
 | **升级不丢数据（v1.2.0 → v1.2.1）** | 覆盖安装前后 `txnCount=31`、`balances=1:0, 2:-121210, 3:123456` 一字不差；versionCode 10200→10201 |
 | **抓取准确率（v1.2.1 规则）** | 读屏只在页面切换+结果页触发；账单提醒/额度/营销渠道拦掉；≥3 笔金额判列表页；通知无结构证据与所有读屏来源置信度封顶 79 |
 | **抓取按 App 性质分级（v1.2.2）** | 真机 probe：抖音「9.9元包邮」拦 / 抖音「支付成功 ¥12.90」抓 / 淘宝「925银」拦且金额=0 / 京东「订单支付成功 199」抓 / 招行「本期账单」拦 / 招行真实消费 87.13 抓 / 微信「已扣费¥2.00」抓 |
+| **规则可编辑（v1.3.2）** | 用户规则加 ABCXYZ → 好物100元ABCXYZ 被拦；恢复内置 → 放行（同一条文本，只改规则文件）|
+| **退款冲正（v1.3.2）** | simulate:…退款到账10.00元 → status=PENDING，eason=疑似 #68「微信」（¥10）的退款；点「冲销原账」删原支出 |
 | **schema v1→v2 迁移（v1.3.0）** | 升级后 	xnCount=30、alances=1:0, 2:-119910, 3:-38923 一字不差；配置全保留；迁移前快照 pre_migrate_v1_to_v2_*.db(+wal/shm) 已生成 |
 | **自动快照（v1.3.0）** | diag snaps 见 5 份：uto_upgrade_from_v0_to_v10300_*.json、uto_manual_*.json、迁移前 db 快照 |
 | **判定原因（v1.3.0）** | 新抓取 eason=支付/银行类通知；被拦日志 未通过闸门：验证码/物流/活动等无关通知 |

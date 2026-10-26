@@ -311,6 +311,61 @@ class MainActivity : ComponentActivity() {
                             com.jingyuniang.ledger.util.AppLog.e("DIAG dumpdb 失败", it)
                         }
                     }
+                    cmd == "exportrules" -> {
+                        // 把当前全部规则导出成 JSON（用来生成 assets/capture_rules.json）
+                        runCatching {
+                            val f = com.jingyuniang.ledger.capture.CaptureFilters.Tables
+                            val pt = com.jingyuniang.ledger.capture.ParseEngine.Tables
+                            fun arr(l: Collection<String>) = org.json.JSONArray().also { a -> l.forEach { a.put(it) } }
+                            val root = org.json.JSONObject().apply {
+                                put("version", 1)
+                                put("updatedAt", "2026-10-26")
+                                put("adMarkers", arr(f.adMarkers))
+                                put("nonTxnMarkers", arr(f.nonTxnMarkers))
+                                put("fundTransferMarkers", arr(f.fundTransferMarkers))
+                                put("strongPayTemplate", arr(f.strongPayTemplate))
+                                put("txnEvidence", arr(f.txnEvidence))
+                                put("payEvidence", arr(f.payEvidence))
+                                put("paySourceMarkers", arr(f.paySourceMarkers))
+                                put("transferMarkers", arr(f.transferMarkers))
+                                put("bankTextMarkers", arr(f.bankTextMarkers))
+                                put("strongHints", arr(f.strongHints))
+                                put("marketingChannels", arr(f.marketingChannels))
+                                put("payRailPackages", arr(f.payRailPackages))
+                                put("commercePackages", arr(f.commercePackages))
+                                put("contentPackages", arr(f.contentPackages))
+                                put("junk", arr(pt.junk))
+                                put("specUnits", arr(pt.specUnits))
+                                put("incomeWords", arr(pt.incomeWords))
+                                put("expenseWords", arr(pt.expenseWords))
+                            }
+                            val out = java.io.File(getExternalFilesDir(null), "capture_rules.json")
+                            out.writeText(root.toString(2))
+                            com.jingyuniang.ledger.util.AppLog.i("DIAG exportrules => ${out.absolutePath} ${out.length()}B")
+                        }.onFailure { com.jingyuniang.ledger.util.AppLog.e("exportrules 失败", it) }
+                    }
+                    cmd == "importrules" -> {
+                        // 从外部目录读 capture_rules_user.json 导入（验证"改文件→立即生效"链路）
+                        runCatching {
+                            val f = java.io.File(getExternalFilesDir(null), "capture_rules_user.json")
+                            if (!f.exists()) {
+                                com.jingyuniang.ledger.util.AppLog.w("DIAG importrules 找不到 ${f.absolutePath}")
+                            } else {
+                                val err = com.jingyuniang.ledger.capture.RuleStore.importFrom(applicationContext, f.readBytes())
+                                val r = com.jingyuniang.ledger.capture.RuleStore.current
+                                com.jingyuniang.ledger.util.AppLog.i(
+                                    "DIAG importrules => ${err ?: "成功"} | 来源=${r.source} 共 ${r.totalEntries} 条"
+                                )
+                            }
+                        }.onFailure { com.jingyuniang.ledger.util.AppLog.e("importrules 失败", it) }
+                    }
+                    cmd == "resetrules" -> {
+                        val ok = com.jingyuniang.ledger.capture.RuleStore.resetToBuiltIn(applicationContext)
+                        val r = com.jingyuniang.ledger.capture.RuleStore.current
+                        com.jingyuniang.ledger.util.AppLog.i(
+                            "DIAG resetrules => ${if (ok) "已恢复" else "失败"} | 来源=${r.source} 共 ${r.totalEntries} 条"
+                        )
+                    }
                     cmd == "snap" -> {
                         lifecycleScope.launch {
                             val f = com.jingyuniang.ledger.io.SnapshotManager.writeDaily(applicationContext, "manual")

@@ -353,7 +353,10 @@ fun CaptureScreen(vm: AppViewModel, onBack: () -> Unit) {
                             onConfirm = { vm.confirmCapture(c, c.categoryId, c.accountId) { } },
                             onEdit = { editingCapture = c },
                             onIgnore = { vm.ignoreCapture(c) { } },
-                            onBlock = { blockingCapture = c }
+                            onBlock = { blockingCapture = c },
+                            onRefundOff = { originId ->
+                                vm.refundOffCapture(c, originId) { hint = it }
+                            }
                         )
                     }
                 }
@@ -622,7 +625,8 @@ private fun CaptureRow(
     onConfirm: () -> Unit,
     onEdit: () -> Unit,
     onIgnore: () -> Unit,
-    onBlock: () -> Unit
+    onBlock: () -> Unit,
+    onRefundOff: (Long) -> Unit = {}
 ) {
     val p = WhaleTheme.palette
     val cat = categories.firstOrNull { it.id == c.categoryId }
@@ -671,6 +675,18 @@ private fun CaptureRow(
             "🚫", color = p.sub, fontSize = 12.sp,
             modifier = Modifier.clickable { onBlock() }.padding(6.dp)
         )
+        // 退款冲正：reason 里带「疑似 #123」时给出一个直接冲销的入口
+        val refundOf = Regex("""疑似 #(\d+)""").find(c.reason)?.groupValues?.get(1)?.toLongOrNull()
+        if (refundOf != null) {
+            Text(
+                "冲销原账", color = Color.White, fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(p.expense)
+                    .clickable { onRefundOff(refundOf) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+        }
     }
 }
 

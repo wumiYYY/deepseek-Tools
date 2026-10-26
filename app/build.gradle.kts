@@ -10,7 +10,7 @@ plugins {
 // ---- 版本号：只改 versionName，versionCode 自动派生（规则见下），避免手改漏改 ----
 // versionCode = major*10000 + minor*100 + patch，例如 1.2.0 → 10200。**只增不减**，
 // 覆盖安装（小米/HyperOS 等）要求 versionCode >= 已装版本。
-val versionNameValue = "1.3.0"
+val versionNameValue = "1.3.2"
 val versionCodeValue = versionNameValue.split(".").let { parts ->
     val major = parts.getOrNull(0)?.toIntOrNull() ?: 1
     val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -133,4 +133,6 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    // JVM 单测里 android.jar 的 org.json 是空实现，需要真实实现才能测规则 JSON
+    testImplementation("org.json:json:20231013")
 }

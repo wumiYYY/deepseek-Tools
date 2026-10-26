@@ -64,7 +64,40 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     var apiBase by remember { mutableStateOf(settings.apiBase) }
     var hint by remember { mutableStateOf("") }
     var autoSnapNote by remember { mutableStateOf("") }
+    var ruleInfo by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    // 导出/导入识别规则（P1-4：490 条规则交给用户自己改）
+    val exportRulesLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val json = com.jingyuniang.ledger.capture.RuleStore
+                    .exportJson(com.jingyuniang.ledger.capture.RuleStore.current)
+                ctx.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                ruleInfo = "已导出（${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条规则）"
+            }.onFailure { ruleInfo = "导出失败：${it.message}" }
+        }
+    }
+    val importRulesLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null) {
+                    ruleInfo = "读不到这个文件"
+                } else {
+                    val err = com.jingyuniang.ledger.capture.RuleStore.importFrom(ctx, bytes)
+                    ruleInfo = if (err == null) {
+                        "导入成功：${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条，已立即生效"
+                    } else {
+                        "导入失败：$err（现有规则未变）"
+                    }
+                }
+            }.onFailure { ruleInfo = "导入失败：${it.message}" }
+        }
+    }
 
     ScreenColumn("AI 设置", onBack) {
         WhaleCard {
@@ -178,7 +211,40 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
     val ctx = LocalContext.current
     var hint by remember { mutableStateOf("") }
     var autoSnapNote by remember { mutableStateOf("") }
+    var ruleInfo by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    // 导出/导入识别规则（P1-4：490 条规则交给用户自己改）
+    val exportRulesLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val json = com.jingyuniang.ledger.capture.RuleStore
+                    .exportJson(com.jingyuniang.ledger.capture.RuleStore.current)
+                ctx.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                ruleInfo = "已导出（${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条规则）"
+            }.onFailure { ruleInfo = "导出失败：${it.message}" }
+        }
+    }
+    val importRulesLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null) {
+                    ruleInfo = "读不到这个文件"
+                } else {
+                    val err = com.jingyuniang.ledger.capture.RuleStore.importFrom(ctx, bytes)
+                    ruleInfo = if (err == null) {
+                        "导入成功：${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条，已立即生效"
+                    } else {
+                        "导入失败：$err（现有规则未变）"
+                    }
+                }
+            }.onFailure { ruleInfo = "导入失败：${it.message}" }
+        }
+    }
     var shareTarget by remember { mutableStateOf<File?>(null) }
     var askPassword by remember { mutableStateOf<String?>(null) } // "backup" / "restore"
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
@@ -259,6 +325,48 @@ fun DataScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
 
         // 自动快照（App 自动做的「救命备份」）：升级后/每天一份，不需要密码
+        // 识别规则（可编辑）：把 490 条规则暴露给用户，改词不用等发版
+        Spacer(Modifier.height(10.dp))
+        WhaleCard {
+            Text("识别规则（可自己改）", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            val rules = com.jingyuniang.ledger.capture.RuleStore.current
+            Text(
+                "当前：${rules.source} · 共 ${rules.totalEntries} 条规则",
+                color = p.sub, fontSize = 11.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "遇到「老是抓错」或「老是漏抓」，可以先导出规则、在对照表里加/删几个词，再导入——立即生效，不用等更新。\n" +
+                    "改坏了也不要紧：文件校验不过会自动回退到内置规则。",
+                color = p.sub, fontSize = 10.sp, lineHeight = 15.sp
+            )
+            if (ruleInfo.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(ruleInfo, color = p.primary, fontSize = 11.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row {
+                ActionButton("导出规则") {
+                    runCatching {
+                        exportRulesLauncher.launch("capture_rules.json")
+                    }.onFailure { ruleInfo = "这台设备没有文件保存器" }
+                }
+                Spacer(Modifier.width(8.dp))
+                ActionButton("导入规则") {
+                    runCatching {
+                        importRulesLauncher.launch(arrayOf("application/json", "*/*"))
+                    }.onFailure { ruleInfo = "这台设备没有文件选择器" }
+                }
+                Spacer(Modifier.width(8.dp))
+                ActionButton("恢复默认", danger = true) {
+                    val ok = com.jingyuniang.ledger.capture.RuleStore.resetToBuiltIn(ctx)
+                    ruleInfo = if (ok) "已恢复内置规则（${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条）"
+                    else "恢复失败"
+                }
+            }
+        }
+
         Spacer(Modifier.height(10.dp))
         WhaleCard {
             Text("自动快照（App 自动生成）", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)

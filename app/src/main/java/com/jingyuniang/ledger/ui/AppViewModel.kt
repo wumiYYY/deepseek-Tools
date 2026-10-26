@@ -326,6 +326,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onDone()
     }
 
+    /**
+     * 退款冲正（P1-5）：把「疑似为 #originTxnId 退款」的这条当成冲销 —— 删掉原支出，本条不记收入。
+     * 效果：本月支出减少，而不是收入增加。
+     */
+    fun refundOffCapture(capture: com.jingyuniang.ledger.data.Capture, originTxnId: Long, onDone: (String) -> Unit) =
+        scope.launch {
+            val msg = runCatching {
+                if (originTxnId > 0) repo.txnDao.deleteById(originTxnId)
+                repo.captureDao.update(
+                    capture.copy(
+                        status = com.jingyuniang.ledger.data.CaptureStatus.IGNORED,
+                        reason = "已按退款冲销：删除了原支出 #$originTxnId，本条不计收入"
+                    )
+                )
+                com.jingyuniang.ledger.capture.CaptureNotifier.cancel(capture)
+                "已冲销原支出 #$originTxnId，这笔退款没有记成收入"
+            }.getOrElse { "冲销失败：${it.message}" }
+            onDone(msg)
+        }
+
     /** 加入抓取黑名单（`pkg|keyword`，见 CaptureBlocklist） */
     fun blockCaptureSource(entry: String) = scope.launch {
         AppLog.d("加入抓取黑名单：$entry")
