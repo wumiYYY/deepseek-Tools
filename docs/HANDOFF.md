@@ -310,10 +310,13 @@ app/src/main/
   （写 `local.properties`，不入库）。脚本现在会**自检**：真拿口令开一次密钥库、比一次证书指纹，
   口令/别名错或拿到野钥匙会在这一步就红，而不是等到发版时静默出 unsigned 包（踩过）。
   没凭据也能构建，但出的是 unsigned 包，装不上手机。
-- **交接包**（v1.4.0 会话生成）：`D:\Tools\deepseek_build_Tools\_signing_handover\`（**在仓库外**，
-  `git add -A` 带不走）＋ 同名 `.zip`（在 `…\deepseek_build_Tools\` 下）。里面有 jks、`local.properties`、
-  `SHA256SUMS.txt`、`README-签名交接.md`（装法/验证命令/出错症状对照表/保管规矩）。
-  发给合作者只走私密渠道；**这两个路径都不要挪进仓库**。
+- **交接包**（一次性 onboarding 物料，**不是每版都发**）：`.\scripts\make-handover.ps1` 生成
+  `D:\Tools\deepseek_build_Tools\_collaborator_handover\` + 同名 zip（在 `…\deepseek_build_Tools\` 下）。
+  脚本会先核对 jks 指纹，然后打进去：主文档 + HANDOFF/RELEASE/CAPTURE_RULES/用户指引/CONTRIBUTING/LICENSE
+  + 签名（jks/local.properties）+ 更新服务模板 + `版本信息.txt`（哪个 commit / 哪版）+ SHA256SUMS。
+  **默认不带 APK**（一升级就过期，省得每次重发 17MB；签名对照看证书指纹就够；要带加 `-IncludeApk`）。
+  只有「新合作者 / 口令变了 / 想给对方最新文档快照」才需要重发 —— 发新版本一律走 git。
+  这两个路径都在**仓库外**，`git add -A` 带不走。
 - **三个口令**：`WHALE_STORE_PASSWORD` = `WHALE_KEY_PASSWORD` = `whalemoney2024`，`WHALE_KEY_ALIAS` = `jingyuniang`。
   ⚠️ `setup-signing.ps1` 旧默认别名是 `whale`（错的，已修成 `jingyuniang`），手上若是旧脚本要自己传 `-KeyAlias`。
 - **证书指纹**：`SHA-256 = e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975`（CN=JingYuniang）。
