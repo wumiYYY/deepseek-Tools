@@ -343,6 +343,10 @@ fun AccountScreen(vm: AppViewModel, onBack: () -> Unit) {
     var balanceHint by remember { mutableStateOf("") }
     var balanceAccId by remember { mutableStateOf(0L) }
     var ocrBusy by remember { mutableStateOf(false) }
+    // 删除账户时如果名下还有账目：先选迁移目标，避免账目变孤儿（v1.4.5）
+    var deleteAcc by remember { mutableStateOf<Account?>(null) }
+    var deleteAccCount by remember { mutableStateOf(0) }
+    var accountMsg by remember { mutableStateOf("") }
     val ctx = LocalContext.current
 
     // ---- 「更新余额 · 截图识别」：选图 → OCR → 余额 + 账户一起预填 ----
@@ -391,6 +395,10 @@ fun AccountScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(10.dp))
+        if (accountMsg.isNotBlank()) {
+            Text(accountMsg, color = p.primary, fontSize = 11.sp)
+            Spacer(Modifier.height(8.dp))
+        }
         // ---- 更新余额：三行入口（截图识别 / 手动输入已开，读屏待第 3 刀） ----
         WhaleCard(modifier = Modifier.padding(bottom = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -464,7 +472,68 @@ fun AccountScreen(vm: AppViewModel, onBack: () -> Unit) {
             initial = editing,
             onDismiss = { showDialog = false },
             onSave = { vm.saveAccount(it) { showDialog = false } },
-            onDelete = { vm.deleteAccount(it) { showDialog = false } }
+            onDelete = { acc ->
+                // 名下还有账目 → 不能直接删（账单会变孤儿、余额凭空变），先问迁移到哪
+                vm.accountTxnCount(acc.id) { n ->
+                    showDialog = false
+                    if (n == 0) {
+                        vm.deleteAccount(acc) { accountMsg = it }
+                    } else {
+                        accountMsg = ""
+                        deleteAccCount = n
+                        deleteAcc = acc
+                    }
+                }
+            }
+        )
+    }
+
+    // ---- 删除账户 · 迁移账目（v1.4.5）----
+    deleteAcc?.let { victim ->
+        val others = accounts.filter { it.id != victim.id }
+        AlertDialog(
+            onDismissRequest = { deleteAcc = null },
+            title = {
+                Text(
+                    "「${victim.name}」下还有 $deleteAccCount 笔账目",
+                    fontSize = 15.sp, fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "删账户前先把这些账目转走，否则它们会挂在已删除的账户上 —— 余额会凭空少一块。",
+                        color = p.sub, fontSize = 11.sp, lineHeight = 16.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (others.isEmpty()) {
+                        Text("没有别的账户可迁，请先新建一个账户。", color = p.expense, fontSize = 11.sp)
+                    } else {
+                        others.forEach { acc ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        val target = acc.id
+                                        deleteAcc = null
+                                        vm.deleteAccount(victim, migrateTo = target) { accountMsg = it }
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                EmojiAvatar(acc.emoji, Color(acc.color), 26.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text("转到「${acc.name}」", color = p.text, fontSize = 13.sp)
+                                Spacer(Modifier.weight(1f))
+                                Text("›", color = p.sub, fontSize = 15.sp)
+                            }
+                            RowDivider(inset = 4.dp)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { deleteAcc = null }) { Text("取消", color = p.sub) } }
         )
     }
 

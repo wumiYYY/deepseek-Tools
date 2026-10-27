@@ -11,14 +11,14 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | **v1.4.4**（versionCode **10404**，数据库 schema **v2**，未动 schema） |
-| 提交 | `main` HEAD 见 `git log -1`（tag 已到 `v1.4.4`） |
-| CI | ✅ 绿（GitHub Actions：`单元测试（171 个）` + `规则文件校验`）；红灯排错见 §6.28 |
-| 产物 | `dist/1.4.4/鲸鱼娘金库-v1.4.4.apk`（24.59 MB，仅 arm64-v8a，sha256 `b257c066…6ee0`；v2 签名指纹 = `e7962e34…1975`） |
-| 设备 | **用户手机已装 v1.4.4**；资金转移改造已真机验（见 §5） |
-| 真实账本 | 37 笔、`pendingCaptures=0`；账户已被用户重建为 `1:现金, 8:微信, 9:招商银行`（**旧的 2/3/7 已删**，见 §6.36） |
-| 余额基线 | `1:0, 8:20000, 9:1082100`（分；账户 1:现金 8:微信 9:招商银行） |
-| 测试 | **171 个**（含 `RuleGuideTest` 12 / `CategoryAccuracyTest` 12 / `CategoryScenarioTest` 34 / `TransferFlowTest` 6） |
+| 版本 | **v1.4.5**（versionCode **10405**，数据库 schema **v2**，未动 schema） |
+| 提交 | `main` HEAD 见 `git log -1`（tag 已到 `v1.4.5`） |
+| CI | ✅ 绿（GitHub Actions：`单元测试（191 个）` + `规则文件校验`）；红灯排错见 §6.28 |
+| 产物 | `dist/1.4.5/鲸鱼娘金库-v1.4.5.apk`（24.59 MB，仅 arm64-v8a；v2 签名指纹 = `e7962e34…1975`） |
+| 设备 | **用户手机已装 v1.4.5**；余额口径 / 删账户迁移已真机验（见 §5） |
+| 真实账本 | 38 笔、`pendingCaptures=0`；账户 = `1:现金, 8:微信, 9:招商银行`（旧的 2/3/7 已删，见 §6.37） |
+| 余额基线 | `1:0, 8:25000, 9:1077100`（分；1:现金 8:微信 ¥250 9:招商银行 ¥10,771.00） |
+| 测试 | **191 个**（含 `RuleGuideTest` 12 / `CategoryAccuracyTest` 12 / `CategoryScenarioTest` 34 / `TransferFlowTest` 6 / `BalanceFlowTest` 20） |
 | 新分类 | 系统分类「待分类」（❓，`isSystem`）= 「猜不出来」的去处，**不要删** |
 
 > ⚠️ **绝对不要清用户数据**。造测试数据后必须用 `del:<txnId>` / `delcap:<id>` 删干净，
@@ -173,8 +173,29 @@ app/src/main/
 
 ---
 
-## 4. 数据安全（唯一能一次毁掉账本的地方）
+### 3.6 余额口径（v1.4.5，只有这一处算法）
 
+余额 = `期初余额 + BalanceMath.delta(全部账目, 账户id)`，规则：
+
+| 类型 | 对账户的影响 |
+|---|---|
+| `INCOME` + `accountId=id` | `+amount` |
+| `EXPENSE` + `accountId=id` | `-amount` |
+| `TRANSFER` + `accountId=id` | `-amount`（转出） |
+| `TRANSFER` + `toAccountId=id` | `+toAmountCents`（转入；缺省按 amount） |
+| 其它（`accountId=0`、**账户已删**） | 不影响任何账户 → 计入 `orphanCount` |
+
+- 以前这段逻辑在 SQL（`balanceDelta`）里，和手算容易跑偏；现在**只有一个实现** `data/BalanceMath.kt`，
+  `Repo.accountBalance / accountBalanceMap` 都走它，`BalanceFlowTest` 直接断言「哪个账户动了多少钱」。
+- **自己转给自己**（迁移后可能出现）按**净 0** 处理 —— 旧 SQL 的 `CASE` 只扣不加，会凭空少一笔。
+- `余额调整`（source=ADJUST）**算余额**、不算收支（统计口径另行按 source 过滤）。
+- **删除账户会先把账目迁走**：UI 里点删除 → 若名下有账目，弹「转到哪个账户」，迁移后再归档
+  （`AccountMove.remap` + `Repo.migrateAccountTxns`）。不迁就会变孤儿，余额凭空变。
+
+> ⚠️ 账本里可能已经有**历史孤儿**（账户删于 v1.4.5 之前）。`Repo.orphanTxnCount()` 能数出来，
+> 但**还没有修复入口**（见 §7 backlog）：orphanCount > 0 时，这些账目不进任何账户余额。
+
+## 4. 数据安全（唯一能一次毁掉账本的地方）
 1. `AppDatabase` **不用** `fallbackToDestructiveMigration()`；迁移缺失时**抛异常**（数据文件保留，回装旧版可继续用）。
 2. 加字段三件套：`@Database(version = N+1)` + `DB_VERSION` + `MIGRATIONS` 里加 `Migration(N, N+1)`。
 3. `SnapshotManager.beforeMigration()` 在 Room 打开前读 SQLite 头 `user_version`，低于目标就复制 db+wal+shm。
@@ -211,6 +232,8 @@ app/src/main/
 | 关键词升级实测 | 老安装（旧词表在 DB 里）升到 v1.4.3 后，「蜜雪冰城」「库迪」这种**只在新区表里**的词也能判对 → 说明 `refreshCategoryKeywords()` 真的把词并进去了 |
 | 包名串味回归（v1.4.3 真机） | 修前「携程酒店」「iCloud月费」都被判成餐饮（因为商家抽不到 → 退成包名 `cmb.pb` → 命中早年被学进去的 `cmb.pb→餐饮` 记忆）；修后分别 16/19 |
 | 充值识别（v1.4.4 真机） | 重放招行「在【财付通-微信支付-微信零钱充值账户】发生快捷支付扣款 ¥0.01」→ 日志 `资金转移：9 → 8（微信）`，`txn TRANSFER acc=9`，余额 `8:15000→15001 / 9:1082100→1082099` —— 双边都对，且不计收支 |
+| 余额调整（v1.4.5 真机） | `diag bal:8:250`（**单位是元**）→ 微信 ¥250；再 `bal:8:20100` → ¥20,100；`bal:8:250` 调回 → ¥250。全程只动微信，招行不动；**删掉那 3 笔 ADJUST 流水后余额仍是 ¥250**（净 0，删记录不等于删钱） |
+| 收到别人转账（真机） | 微信「[转账] 张三向你转账 100.00 元，请收款」→ 置信度 79 → 进**待确认**（不自动入账，安全）；单测断言方向 = INCOME、账户 = 微信、余额 +100 |
 
 ---
 
@@ -303,6 +326,8 @@ app/src/main/
 | ~~P1~~ | ~~规则卡的「人话索引」~~ | ✅ **v1.4.0 已做**：`capture/RuleGuide.kt` + `ui/RuleGuideCard.kt`，25 条症状→加词，`RuleGuideTest` 12 个断言守着 |
 | ~~P1~~ | ~~自动抓取的分类不准/太笼统~~ | ✅ **v1.4.2 已做**：商户抽取（`【…】`句式）+ 只让用户教记忆 + 待分类 + AI 兜底，见 §3.4、§5 |
 | P1 | P1-6 图片附件 | 记账拍小票存图（`res/xml/file_paths.xml` 已有 cache-path） |
+| P1 | 「孤儿账目」修复入口 | 账户删于 v1.4.5 之前的历史账目仍挂在已删 id 上（`Repo.orphanTxnCount()` 可数）。需要在「账户管理」里给出「这 N 笔挂在不存在的账户上 → 一键迁到某个账户」，否则余额永远少一块 |
+| P2 | 「收到别人转账」要不要自动入账 | 现在微信收款类通知置信度 79 → 进待确认（安全但不省事）。若要自动，需只在「收款成功 / 你收到一笔 + 金额 + 付款人」同时满足时放行，别放宽整个聊天类 |
 | P2 | 「待分类」批量纠正入口 | 现在只能去明细一条条改；统计页/待确认页应能批量指定分类（一改就记住商户） |
 | P2 | 时段×金额启发式 | 比如工作日 7–9 点小额→早餐/交通。**暂时没做**：精度不够，宁可落「待分类」也不要瞎猜，做了要先拿真机样本统计准确率 |
 | P2 | 应用锁入口 | `Settings.lockPin` 已有字段，缺 UI 与校验 |

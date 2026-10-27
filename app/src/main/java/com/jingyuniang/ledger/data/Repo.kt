@@ -151,8 +151,31 @@ class Repo(val db: AppDatabase) {
 
     suspend fun countRange(from: Long, to: Long): Int = db.txnDao().countRange(from, to)
 
+    /**
+     * 账户余额 = 期初 + 流水变动。算法在 [BalanceMath]（唯一口径，可单测）。
+     * 以前这里走 SQL `balanceDelta`，两边逻辑容易跑偏，见 BalanceMath 注释。
+     */
     suspend fun accountBalance(account: Account): Long =
-        account.initialBalanceCents + db.txnDao().balanceDelta(account.id)
+        account.initialBalanceCents + BalanceMath.delta(db.txnDao().all(), account.id)
+
+    /** 该账户名下（含作为转入方）的账目笔数 */
+    suspend fun txnCountOfAccount(accountId: Long): Int =
+        AccountMove.attachedTo(db.txnDao().all(), accountId).size
+
+    /**
+     * 删除账户前把它的账目改挂到 [toId]（避免「账目变孤儿、余额凭空变」）。
+     * @return 实际改动的账目数
+     */
+    suspend fun migrateAccountTxns(fromId: Long, toId: Long): Int {
+        if (fromId <= 0L || toId <= 0L || fromId == toId) return 0
+        val changed = AccountMove.remap(db.txnDao().all(), fromId, toId)
+        changed.forEach { db.txnDao().update(it) }
+        return changed.size
+    }
+
+    /** 挂在已删除账户上的账目笔数（>0 说明数据里有孤儿，界面上该提示） */
+    suspend fun orphanTxnCount(): Int =
+        BalanceMath.orphanCount(db.txnDao().all(), db.accountDao().all())
 
     suspend fun totalAssets(): Long {
         var sum = 0L
@@ -259,11 +282,9 @@ class Repo(val db: AppDatabase) {
         list.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(",")
 
     // ---------------- 账户余额快照 ----------------
-    suspend fun accountBalanceMap(): Map<Long, Long> {
-        val map = LinkedHashMap<Long, Long>()
-        db.accountDao().all().forEach { map[it.id] = accountBalance(it) }
-        return map
-    }
+    /** 一次读全表算所有账户余额（口径同 [BalanceMath]），别按账户逐个查库 */
+    suspend fun accountBalanceMap(): Map<Long, Long> =
+        BalanceMath.balances(db.txnDao().all(), db.accountDao().all())
 
     /** 取（或创建）一个系统分类，给「余额调整」这类内部账目用 */
     suspend fun ensureCategory(

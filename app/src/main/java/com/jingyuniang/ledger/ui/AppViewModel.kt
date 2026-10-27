@@ -222,9 +222,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onDone()
     }
 
-    fun deleteAccount(account: Account, onDone: () -> Unit = {}) = scope.launch {
-        runCatching { repo.accountDao.delete(account.copy(archived = true)) }
-        onDone()
+    /** 删除账户前先问它名下有多少笔账目（>0 时必须先选迁移目标，否则账目会变孤儿） */
+    fun accountTxnCount(accountId: Long, onResult: (Int) -> Unit) = scope.launch {
+        onResult(runCatching { repo.txnCountOfAccount(accountId) }.getOrDefault(0))
+    }
+
+    /**
+     * 删除（归档）账户。
+     * @param migrateTo 该账户名下的账目改挂到哪个账户；有账目却传 null 会被拒绝并回一句提示
+     */
+    fun deleteAccount(
+        account: Account,
+        migrateTo: Long? = null,
+        onDone: (String) -> Unit = {}
+    ) = scope.launch {
+        val msg = runCatching {
+            val n = repo.txnCountOfAccount(account.id)
+            if (n > 0 && migrateTo == null) {
+                return@runCatching "这个账户下还有 $n 笔账目，先选一个账户把它们转过去"
+            }
+            val moved = if (n > 0 && migrateTo != null) repo.migrateAccountTxns(account.id, migrateTo) else 0
+            repo.accountDao.delete(account.copy(archived = true))
+            refreshBalances()
+            if (moved > 0) "已删除账户，$moved 笔账目已迁移过去" else "已删除账户"
+        }.getOrElse { "删除失败：${it.message}" }
+        onDone(msg)
     }
 
     fun saveLedger(ledger: Ledger, onDone: () -> Unit = {}) = scope.launch {
