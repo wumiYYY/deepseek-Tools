@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.capture
+package com.jingyuniang.ledger.capture
 
 /**
  * 判断一条通知 / 一段页面文字值不值得交给解析引擎。
@@ -143,6 +143,9 @@ object CaptureFilters {
      */
     private val FUND_TRANSFER_MARKERS = REPAYMENT_MARKERS + listOf(
         "零钱提现", "提现到银行卡", "提现到卡", "向银行卡转账", "转到银行卡", "转存", "转入余额宝", "余额宝转出",
+        // 银行卡 ↔ 微信零钱 / 支付宝余额 互转（v1.4.4）：这类记成支出会让「微信余额变少 + 支出虚增」
+        "零钱充值", "充值账户", "转入零钱", "提现到零钱", "余额充值",
+        "转入微信", "转入支付宝", "转账到微信", "转账到支付宝",
         // ATM 取现：银行 → 现金，净资产不变
         "ATM取现", "ATM取款", "取现", "现金提取",
         // 理财申购/赎回：现金 ↔ 理财，净资产不变

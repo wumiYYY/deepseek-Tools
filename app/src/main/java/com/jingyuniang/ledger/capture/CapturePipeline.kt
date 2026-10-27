@@ -153,6 +153,15 @@ object CapturePipeline {
             confidence = effectiveConfidence(source, pkg, title, full, raw.confidence),
             direction = if (fundTransfer) TxnType.TRANSFER else raw.direction
         )
+        // 资金转移的「另一方」（v1.4.4）：银行卡 → 微信零钱、微信零钱 → 银行卡这种双边转移，
+        // 只扣来源会让目标账户永远不加钱，用户看到的就是「钱凭空少了」。
+        // 认不出另一方就按单边转移记（只扣来源），绝不猜一个账户去加钱。
+        val transferTarget = if (fundTransfer && !isRepayment) {
+            ParseEngine.matchTransferTarget(full, accounts, parsed.accountId)
+        } else null
+        if (transferTarget != null) {
+            AppLog.i("资金转移：${parsed.accountId} → ${transferTarget.id}（${transferTarget.name}）")
+        }
         val now = System.currentTimeMillis()
 
         // 1) 抓取去重：同来源 + 同金额，2.5 分钟内只认一次
@@ -268,7 +277,7 @@ object CapturePipeline {
         val autoBook = settings.autoBook && parsed.confidence >= settings.autoBookThreshold
         if (autoBook) {
             // 自动入账**不学习商户**：猜出来的分类拿去做记忆，就是 v1.4.1「滴滴变餐饮」的元凶。
-            val txnId = book(ledgerId, saved, catId, parsed.accountId)
+            val txnId = book(ledgerId, saved, catId, parsed.accountId, toAccountId = transferTarget?.id ?: 0L)
             repo.captureDao.update(saved.copy(status = CaptureStatus.AUTO, txnId = txnId))
             CaptureNotifier.notifyAutoBooked(
                 saved.copy(txnId = txnId, status = CaptureStatus.AUTO),
@@ -332,6 +341,8 @@ object CapturePipeline {
         capture: Capture,
         categoryId: Long,
         accountId: Long,
+        /** 资金转移的另一方账户（>0 才记双边；信用卡还款另有探测逻辑） */
+        toAccountId: Long = 0L,
         /** 只有**用户亲手定的**分类才允许写进商户记忆（自动猜的一律不学） */
         learn: Boolean = false
     ): Long {
@@ -356,6 +367,13 @@ object CapturePipeline {
             ?: accounts.firstOrNull { it.isDefault }?.id
             ?: accounts.firstOrNull { it.type == com.jingyuniang.ledger.data.AccountType.WECHAT }?.id
             ?: accounts.firstOrNull()?.id ?: 0L
+        // 入账账户：信用卡还款优先用信用卡；否则用认出来的「另一方」（且不能和自己相同）
+        val toAcc = when {
+            type != TxnType.TRANSFER -> 0L
+            creditAcc != null && creditAcc.id != acc -> creditAcc.id
+            toAccountId > 0 && toAccountId != acc -> toAccountId
+            else -> 0L
+        }
         val txnId = repo.addTxn(
             Txn(
                 ledgerId = ledgerId,
@@ -363,7 +381,7 @@ object CapturePipeline {
                 amountCents = capture.amountCents,
                 categoryId = cat,
                 accountId = acc,
-                toAccountId = creditAcc?.id ?: 0L,
+                toAccountId = toAcc,
                 toAmountCents = if (type == TxnType.TRANSFER) capture.amountCents else 0L,
                 date = capture.time,
                 note = capture.merchant.ifBlank { cleanNote(capture.rawText) },

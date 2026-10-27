@@ -327,10 +327,42 @@ object ParseEngine {
     fun pkgToType(pkg: String): AccountType? = when {
         pkg == "com.tencent.mm" -> AccountType.WECHAT
         pkg.contains("alipay") || pkg.contains("Alipay") -> AccountType.ALIPAY
+        // ⚠️ v1.4.4：招行手机银行的包名是 `cmb.pb`，原来只认 `cmbchina` 认不出来。
+        // 后果很严重：招行短信「在【财付通-微信支付-微信零钱充值账户】发生快捷支付扣款」
+        // 因为包里出现「微信」被匹配成**微信账户**，于是充值被记成「微信支出」——微信余额反而变少。
         pkg.contains("unionpay") || pkg.contains("bank") || pkg.contains("icbc") ||
             pkg.contains("ccb") || pkg.contains("abchina") || pkg.contains("boc") ||
-            pkg.contains("cmbchina") || pkg.contains("spdb") || pkg.contains("citic") -> AccountType.BANK
+            pkg.contains("cmb") || pkg.contains("spdb") || pkg.contains("citic") ||
+            pkg.contains("psbc") || pkg.contains("cebbank") || pkg.contains("cib") -> AccountType.BANK
         else -> null
+    }
+
+    /**
+     * 资金转移的「另一方」账户（v1.4.4）。
+     *
+     * 场景：银行卡 → 微信零钱（充值）、微信零钱 → 银行卡（提现）。这种是**双边转移**，
+     * 只扣来源会让目标账户永远不增加，用户看到的就是「钱凭空少了一笔」。
+     *
+     * 从正文里认「另一方」：优先账户名原样出现，其次关键词出现；认不出来返回 null
+     * （宁可只记单边，也不猜一个错账户去加钱）。
+     */
+    fun matchTransferTarget(text: String, accounts: List<Account>, sourceId: Long): Account? {
+        var best: Account? = null
+        var bestScore = 0
+        accounts.filter { it.id != sourceId && it.id > 0 }.forEach { acc ->
+            var score = 0
+            if (acc.name.length >= 2 && text.contains(acc.name)) score += 10
+            acc.keywords.split(",", "，").map { it.trim() }
+                .filter { it.length >= 2 && !it.equals("银行", true) && !it.equals("钱包", true) }
+                .forEach { kw ->
+                    if (text.contains(kw, true)) score += 5
+                }
+            if (score > bestScore) {
+                bestScore = score
+                best = acc
+            }
+        }
+        return if (bestScore >= 5) best else null
     }
 
     // ---------- 商户 ----------
