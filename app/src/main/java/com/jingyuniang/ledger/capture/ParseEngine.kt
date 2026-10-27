@@ -142,7 +142,10 @@ object ParseEngine {
         // 5) 分类：商户记忆（**只认用户亲手教过的**）→ 分类关键词 → 都猜不出就留 0，
         //    由上层记成「待分类」—— 猜不出来要让人看见，不要伪装成「其他」（v1.4.2 的教训）。
         var categoryId = 0L
-        matchMerchantRule(merchant, merchantRules)?.let { v ->
+        // 商户不可信（App 名 / 包名 / 银行名）时**不查记忆**：
+        // 早年把「cmb.pb」「招商银行」这类键学进过 merchant_rule，一查就会把整批账单判成同一个类。
+        val merchantForRule = if (isUsableMerchant(merchant, appName)) merchant else ""
+        matchMerchantRule(merchantForRule, merchantRules)?.let { v ->
             categoryId = v.first
             confidence += 10
         }
@@ -411,11 +414,18 @@ object ParseEngine {
         if (m.count { it.isDigit() } >= 3) return false
         if (looksLikeNoise(m)) return false
         if (appName.isNotBlank() && (m == appName || m.contains(appName) || appName.contains(m))) return false
+        // 包名 / 域名这类纯 ASCII 带点的串不是商户。
+        // 真机踩过：模拟/兜底时 merchant 会等于包名「cmb.pb」，而它早年又被学进过记忆，
+        // 于是所有「抽不到商户」的短信都被强行判成那条记忆里的分类（餐饮）。
+        if (m.contains('.') && m.none { it.code > 0x2E80 }) return false
         val norm = normalizeMerchant(m)
         // 用 contains 而不是 ==：真机上写进去的是「招商银行」「财付通-微信支付」这种带前缀的串
         if (NOT_A_MERCHANT.any { norm.contains(it) }) return false
-        // 「盛夏路店」这种只有分店名的串，学进去等于把一条街的所有店并成一个分类
-        if (norm.endsWith("店") && norm.length <= 6) return false
+        // 「盛夏路店」这种只有门店名的串，学进去等于把一条街的所有店并成一个分类。
+        // 注意别误伤「携程酒店」「如家酒店」这类真商户 —— 只有带路/街/号/区/镇/城的地名才算分店名。
+        if (norm.endsWith("店") && norm.length <= 6 &&
+            norm.any { it == '路' || it == '街' || it == '号' || it == '区' || it == '镇' || it == '城' }
+        ) return false
         return true
     }
 
@@ -450,6 +460,17 @@ object ParseEngine {
     }
 
     // ---------- 分类 ----------
+    /**
+     * 分类关键词匹配。
+     *
+     * 打分**按词长加权**（长词更具体）：
+     * - 商户命中：5 + 词长（「美团外卖」比「美团」更像答案）
+     * - 正文命中：2 + 词长/2
+     * - 分类名原样出现：+3
+     *
+     * 同分时比「命中的最长词」，再同分才按分类排序取先者 —— 避免短词把长词挤掉。
+     * 全都命中不了返回 0（上层落「待分类」），**不要**退回「其他」。
+     */
     fun matchCategory(
         text: String,
         merchant: String,
@@ -460,16 +481,31 @@ object ParseEngine {
         val pool = categories.filter { it.type == type && it.keywords.isNotBlank() }
         var bestId = 0L
         var bestScore = 0
+        var bestLen = 0
         pool.forEach { c ->
             var score = 0
+            var longest = 0
             c.keywords.split(",", "，").map { it.trim() }.filter { it.isNotEmpty() }.forEach { kw ->
-                if (merchant.contains(kw, true)) score += 5
-                if (text.contains(kw, true)) score += 2
+                val w = kw.length.coerceIn(2, 6)
+                var hit = false
+                if (merchant.contains(kw, true)) {
+                    score += 5 + w
+                    hit = true
+                }
+                if (text.contains(kw, true)) {
+                    score += 2 + w / 2
+                    hit = true
+                }
+                if (hit && kw.length > longest) longest = kw.length
             }
-            if (c.name.isNotBlank() && text.contains(c.name)) score += 3
-            if (score > bestScore) {
+            if (c.name.isNotBlank() && text.contains(c.name)) {
+                score += 3
+                if (c.name.length > longest) longest = c.name.length
+            }
+            if (score > bestScore || (score == bestScore && score > 0 && longest > bestLen)) {
                 bestScore = score
                 bestId = c.id
+                bestLen = longest
             }
         }
         if (bestId > 0L) return bestId

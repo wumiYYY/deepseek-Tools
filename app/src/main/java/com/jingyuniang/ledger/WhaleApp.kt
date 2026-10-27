@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger
+package com.jingyuniang.ledger
 
 import android.app.Application
 import android.app.NotificationChannel
@@ -65,6 +65,8 @@ class WhaleApp : Application() {
         Services.appScope.launch {
             runCatching {
                 Services.repo.ensureSeeded()
+                // 老安装的分类行是首次启动时写进库的，改 SeedData 不会生效 → 这里补一次并集
+                Services.repo.refreshCategoryKeywords()
                 val s = Services.settings.value
                 if (s.ledgerId == 0L) {
                     Services.repo.ledgerDao.all().firstOrNull()?.let { Services.prefs.setLedgerId(it.id) }

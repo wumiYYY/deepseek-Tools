@@ -22,7 +22,7 @@ class CategoryAccuracyTest {
     private val pe = ParseEngine
 
     private val cats = listOf(
-        Category(id = 10, name = "餐饮", type = TxnType.EXPENSE, keywords = "餐,饭,外卖,美团,咖啡,面馆,滴滴,烧烤"),
+        Category(id = 10, name = "餐饮", type = TxnType.EXPENSE, keywords = "餐,饭,外卖,美团,咖啡,面馆,烧烤"),
         Category(id = 11, name = "交通", type = TxnType.EXPENSE, keywords = "地铁,公交,打车,滴滴,出行,加油"),
         Category(id = 12, name = "其他", type = TxnType.EXPENSE, keywords = ""),
         Category(id = 13, name = "缴费", type = TxnType.EXPENSE, keywords = "缴费,话费,水电"),
@@ -67,6 +67,11 @@ class CategoryAccuracyTest {
         assertFalse(pe.isUsableMerchant("支付宝", "支付宝"))
         assertFalse("纯分店名不算", pe.isUsableMerchant("盛夏路店"))
         assertFalse(pe.isUsableMerchant("10月22日"))
+        // 包名/域名不是商户：真机上「cmb.pb」曾被学进记忆，把所有抽不到商户的短信判成餐饮
+        assertFalse(pe.isUsableMerchant("cmb.pb"))
+        assertFalse(pe.isUsableMerchant("com.tencent.mm"))
+        // 但「携程酒店」是真商户，不能因为带「店」字就被排除
+        assertTrue(pe.isUsableMerchant("携程酒店"))
         assertTrue(pe.isUsableMerchant("瑞幸咖啡", "招商银行"))
         assertTrue(pe.isUsableMerchant("美团外卖", "支付宝"))
     }

@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.data
+package com.jingyuniang.ledger.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
@@ -81,6 +81,8 @@ class Prefs(private val ctx: Context) {
         val captureBlocklist = stringSetPreferencesKey("capture_blocklist")
         val lastSnapshotVersionCode = longPreferencesKey("last_snapshot_version")
         val lastSnapshotTime = longPreferencesKey("last_snapshot_time")
+        /** 已经合并到分类表的内置关键词版本（SeedData.KEYWORD_REV），只做一次 */
+        val categoryKeywordsRev = intPreferencesKey("category_keywords_rev")
     }
 
     val flow: Flow<Settings> = ctx.prefStore.data.map { p ->
@@ -152,6 +154,11 @@ class Prefs(private val ctx: Context) {
         put(K.lastSnapshotVersionCode, versionCode)
         put(K.lastSnapshotTime, time)
     }
+
+    /** 内置分类关键词已经合并到哪个版本（0 = 从没合并过） */
+    suspend fun categoryKeywordsRev(): Int = ctx.prefStore.data.first()[K.categoryKeywordsRev] ?: 0
+
+    suspend fun setCategoryKeywordsRev(v: Int) = put(K.categoryKeywordsRev, v)
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
         ctx.prefStore.edit { it[key] = value }

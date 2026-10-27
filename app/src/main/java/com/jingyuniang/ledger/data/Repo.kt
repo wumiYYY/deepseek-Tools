@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.data
+package com.jingyuniang.ledger.data
 
 import com.jingyuniang.ledger.util.Dates
 import kotlinx.coroutines.flow.Flow
@@ -96,6 +96,38 @@ class Repo(val db: AppDatabase) {
                 )
             }
         }
+    }
+
+    /**
+     * 把内置关键词表「并集」进已经存在的分类行。
+     *
+     * 为什么需要它：分类行是**首次启动时写进数据库**的，光改 [SeedData] 对老安装无效
+     * （手机上那份还是旧词表）。又不想为一个词表去动数据库 schema，所以用版本号 +
+     * 一次性并集：保留用户自己加的词，把新增的种子词补进去。
+     *
+     * @return 实际更新的分类数（0 = 早就合并过，或没有任何变化）
+     */
+    suspend fun refreshCategoryKeywords(): Int {
+        val target = SeedData.KEYWORD_REV
+        if (com.jingyuniang.ledger.Services.prefs.categoryKeywordsRev() >= target) return 0
+        val all = db.categoryDao().all()
+        var changed = 0
+
+        suspend fun mergeOne(name: String, type: TxnType, seed: String) {
+            val cat = all.firstOrNull { it.name == name && it.type == type } ?: return
+            val cur = cat.keywords.split(",", "，").map { it.trim() }.filter { it.isNotEmpty() }
+            val add = seed.split(",", "，").map { it.trim() }
+                .filter { it.isNotEmpty() && !cur.contains(it) }
+            if (add.isEmpty()) return
+            db.categoryDao().update(cat.copy(keywords = (cur + add).joinToString(",")))
+            changed++
+        }
+
+        SeedData.expense.forEach { (n, _, kw) -> mergeOne(n, TxnType.EXPENSE, kw) }
+        SeedData.income.forEach { (n, _, kw) -> mergeOne(n, TxnType.INCOME, kw) }
+        com.jingyuniang.ledger.Services.prefs.setCategoryKeywordsRev(target)
+        com.jingyuniang.ledger.util.AppLog.i("分类关键词合并到 rev$target：更新 $changed 个分类")
+        return changed
     }
 
     // ---------------- 账目 ----------------

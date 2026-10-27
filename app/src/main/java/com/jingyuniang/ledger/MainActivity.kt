@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger
+package com.jingyuniang.ledger
 
 import android.content.Intent
 import android.net.Uri
@@ -401,6 +401,20 @@ class MainActivity : ComponentActivity() {
                             .sortedByDescending { it.time }.take(6).forEach { c ->
                                 com.jingyuniang.ledger.util.AppLog.d(
                                     "DIAG reason #${c.id} status=${c.status} amt=${c.amountCents} reason=${c.reason}"
+                                )
+                            }
+                    }
+                    cmd == "cats" || cmd.startsWith("cats:") -> {
+                        // 分类表体检：id / 名称 / 关键词条数 / 关键词（`cats:餐饮` 只看一个类，查
+                        // 「为什么这条被判成这个类」时直接比对全量词表）
+                        val only = cmd.removePrefix("cats").removePrefix(":").trim()
+                        com.jingyuniang.ledger.Services.repo.categoryDao.all()
+                            .filter { only.isEmpty() || it.name == only }
+                            .forEach { c ->
+                                val kws = c.keywords.split(",", "，").map { it.trim() }.filter { it.isNotEmpty() }
+                                com.jingyuniang.ledger.util.AppLog.d(
+                                    "DIAG cat id=${c.id} ${c.type} ${c.name} n=${kws.size} sys=${c.isSystem} " +
+                                        "kw=${if (only.isEmpty()) kws.take(8).joinToString("、") else kws.joinToString("、")}"
                                 )
                             }
                     }
