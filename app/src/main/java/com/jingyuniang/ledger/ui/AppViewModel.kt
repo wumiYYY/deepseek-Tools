@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.ui
+package com.jingyuniang.ledger.ui
 
 import android.app.Application
 import android.net.Uri
@@ -189,7 +189,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveTxn(txn: Txn, edit: Boolean, onDone: () -> Unit = {}) = scope.launch {
         runCatching {
             if (edit) repo.updateTxn(txn) else repo.addTxn(txn)
-            if (txn.merchant.isNotBlank() && txn.categoryId > 0) {
+            // 只有「像商户」的才学：App 名（微信/招商银行）、渠道名、纯分店名（盛夏路店）
+            // 一旦被学进商户记忆，会把该来源的所有账单锁死到同一个分类（v1.4.1 真机事故）。
+            if (txn.categoryId > 0 &&
+                com.jingyuniang.ledger.capture.ParseEngine.isUsableMerchant(txn.merchant)
+            ) {
                 repo.learnMerchant(txn.merchant, txn.categoryId, txn.accountId)
             }
         }

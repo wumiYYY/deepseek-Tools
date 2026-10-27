@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.capture
+package com.jingyuniang.ledger.capture
 
 import com.jingyuniang.ledger.Services
 import com.jingyuniang.ledger.data.Account
@@ -30,6 +30,13 @@ object CapturePipeline {
 
     /** 退款回溯窗口：30 天内的同金额支出才可能是它冲的那笔 */
     private const val REFUND_LOOKBACK = 30L * 24 * 60 * 60 * 1000
+
+    /**
+     * 关键词没命中时问 AI 分类的硬超时（秒）。
+     * 抓取是在通知回调里跑的，超时就降级成「待分类」——
+     * 绝不能因为模型慢/网络差把「已记账」通知拖到一分钟以后。
+     */
+    private const val AI_CATEGORY_TIMEOUT_SEC = 6L
 
     /**
      * 最终置信度 = 解析分 + 抓取来源/证据校正。
@@ -202,6 +209,41 @@ object CapturePipeline {
             }
         }
 
+        // ---- 分类兜底（v1.4.2）----
+        // 关键词没命中时：能用 AI 就问**一次**（失败/超时立刻降级），问不出来就明确记「待分类」。
+        // 绝不再默默塞进「其他」：那样用户看不出哪些是猜的，统计也只会显示一个笼统的大类。
+        // 放在去重检查之后，避免给重复通知白花一次 AI 调用。
+        val statsType = when (parsed.direction) {
+            TxnType.INCOME -> TxnType.INCOME
+            TxnType.TRANSFER -> TxnType.TRANSFER
+            else -> TxnType.EXPENSE
+        }
+        var catId = parsed.categoryId
+        if (catId == 0L && statsType != TxnType.TRANSFER) {
+            if (settings.aiEnabled && settings.apiKey.isNotBlank() &&
+                com.jingyuniang.ledger.ai.AiService.available()
+            ) {
+                val ai = runCatching {
+                    com.jingyuniang.ledger.ai.AiService.suggestCategory(
+                        parsed.merchant, full, categories, statsType == TxnType.INCOME,
+                        timeoutSec = AI_CATEGORY_TIMEOUT_SEC
+                    )
+                }.onFailure { AppLog.w("AI 分类失败，降级为待分类", it) }.getOrNull()
+                if (ai != null && ai > 0L) {
+                    catId = ai
+                    AppLog.i("AI 分类：cat=$ai 商户=${parsed.merchant}")
+                }
+            }
+            if (catId == 0L) {
+                catId = runCatching {
+                    repo.ensureCategory(ParseEngine.UNCERTAIN_CATEGORY, statsType, "❓")
+                }.getOrDefault(0L)
+                AppLog.i("关键词没命中，记为「${ParseEngine.UNCERTAIN_CATEGORY}」商户=${parsed.merchant}")
+            }
+        }
+        // 可能刚建了「待分类」，重读一次分类表，否则通知里显示不出名字
+        val cats = if (catId != parsed.categoryId) repo.categoryDao.all() else categories
+
         val ledgerId = currentLedgerId()
         val capture = Capture(
             source = source,
@@ -213,7 +255,7 @@ object CapturePipeline {
             direction = parsed.direction,
             merchant = parsed.merchant,
             accountId = parsed.accountId,
-            categoryId = parsed.categoryId,
+            categoryId = catId,
             status = CaptureStatus.PENDING,
             confidence = parsed.confidence,
             time = now,
@@ -225,17 +267,18 @@ object CapturePipeline {
 
         val autoBook = settings.autoBook && parsed.confidence >= settings.autoBookThreshold
         if (autoBook) {
-            val txnId = book(ledgerId, saved, parsed.categoryId, parsed.accountId)
+            // 自动入账**不学习商户**：猜出来的分类拿去做记忆，就是 v1.4.1「滴滴变餐饮」的元凶。
+            val txnId = book(ledgerId, saved, catId, parsed.accountId)
             repo.captureDao.update(saved.copy(status = CaptureStatus.AUTO, txnId = txnId))
             CaptureNotifier.notifyAutoBooked(
                 saved.copy(txnId = txnId, status = CaptureStatus.AUTO),
-                categories.firstOrNull { it.id == parsed.categoryId }?.name ?: "未分类",
+                cats.firstOrNull { it.id == catId }?.name ?: "未分类",
                 accounts.firstOrNull { it.id == parsed.accountId }?.name ?: ""
             )
         } else {
             CaptureNotifier.notifyPending(
                 saved,
-                categories.firstOrNull { it.id == parsed.categoryId }?.name ?: "未分类",
+                cats.firstOrNull { it.id == catId }?.name ?: "未分类",
                 accounts.firstOrNull { it.id == parsed.accountId }?.name ?: ""
             )
         }
@@ -252,7 +295,8 @@ object CapturePipeline {
         }
         val cid = categoryId ?: capture.categoryId
         val aid = accountId ?: capture.accountId
-        val txnId = book(currentLedgerId(), capture, cid, aid)
+        // 用户手动点了确认 / 选了分类 → 这时才值得记进商户记忆
+        val txnId = book(currentLedgerId(), capture, cid, aid, learn = categoryId != null)
         repo.captureDao.update(capture.copy(status = CaptureStatus.CONFIRMED, txnId = txnId))
         CaptureNotifier.cancel(capture)
         return txnId
@@ -274,10 +318,10 @@ object CapturePipeline {
         CaptureNotifier.cancel(capture)
     }
 
-    /** 用户修改待确认项的分类/账户后直接入账 */
+    /** 用户修改待确认项的分类/账户后直接入账（这时才学习商户 → 分类） */
     suspend fun bookNow(capture: Capture, categoryId: Long, accountId: Long): Long {
         val repo = Services.repo
-        val txnId = book(currentLedgerId(), capture, categoryId, accountId)
+        val txnId = book(currentLedgerId(), capture, categoryId, accountId, learn = true)
         repo.captureDao.update(capture.copy(status = CaptureStatus.CONFIRMED, txnId = txnId, categoryId = categoryId, accountId = accountId))
         CaptureNotifier.cancel(capture)
         return txnId
@@ -287,7 +331,9 @@ object CapturePipeline {
         ledgerId: Long,
         capture: Capture,
         categoryId: Long,
-        accountId: Long
+        accountId: Long,
+        /** 只有**用户亲手定的**分类才允许写进商户记忆（自动猜的一律不学） */
+        learn: Boolean = false
     ): Long {
         val repo = Services.repo
         val categories = repo.categoryDao.all()
@@ -326,7 +372,7 @@ object CapturePipeline {
                 captureId = capture.id
             )
         )
-        if (capture.merchant.isNotBlank()) {
+        if (learn && ParseEngine.isUsableMerchant(capture.merchant, capture.appName)) {
             runCatching { repo.learnMerchant(capture.merchant, cat, acc) }
         }
         return txnId

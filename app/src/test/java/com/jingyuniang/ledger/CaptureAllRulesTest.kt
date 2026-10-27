@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger
+package com.jingyuniang.ledger
 
 import com.jingyuniang.ledger.capture.CaptureFilters
 import com.jingyuniang.ledger.capture.ParseEngine
@@ -253,7 +253,7 @@ class CaptureAllRulesTest {
     }
 
     @Test
-    fun `分类匹配按关键词与兜底其他`() {
+    fun `分类匹配按关键词与猜不出留 0`() {
         val cats = listOf(
             Category(id = 10, name = "餐饮", type = TxnType.EXPENSE, keywords = "餐,饭,外卖,星巴克"),
             Category(id = 11, name = "交通", type = TxnType.EXPENSE, keywords = "地铁,打车"),
@@ -262,7 +262,8 @@ class CaptureAllRulesTest {
         )
         assertEquals(10L, pe.matchCategory("星巴克咖啡 25 元", "星巴克咖啡", TxnType.EXPENSE, cats))
         assertEquals(11L, pe.matchCategory("打车 23 元", "", TxnType.EXPENSE, cats))
-        assertEquals(12L, pe.matchCategory("不知道是什么 5 元", "", TxnType.EXPENSE, cats))
+        // v1.4.2 起：猜不出来返回 0（上层会落成「待分类」），不再伪装成「其他」
+        assertEquals(0L, pe.matchCategory("不知道是什么 5 元", "", TxnType.EXPENSE, cats))
         assertEquals(20L, pe.matchCategory("工资入账", "", TxnType.INCOME, cats))
     }
 

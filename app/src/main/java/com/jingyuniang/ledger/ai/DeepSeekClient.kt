@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.ai
+package com.jingyuniang.ledger.ai
 
 import com.jingyuniang.ledger.data.Account
 import com.jingyuniang.ledger.data.Category
@@ -34,7 +34,17 @@ class DeepSeekClient(
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    suspend fun chat(system: String, user: String, jsonMode: Boolean = false): String? =
+    /**
+     * @param timeoutSec >0 时用一套**短超时**（连接 3s / 读 timeoutSec）发这次请求。
+     *   抓取流水线里调 AI 必须用这个：默认 timeout 是 20s+60s，
+     *   网络差的时候会把「已记账」通知拖到一分钟以后。
+     */
+    suspend fun chat(
+        system: String,
+        user: String,
+        jsonMode: Boolean = false,
+        timeoutSec: Long = 0
+    ): String? =
         withContext(Dispatchers.IO) {
             if (apiKey.isBlank()) return@withContext null
             runCatching {
@@ -56,7 +66,14 @@ class DeepSeekClient(
                     .addHeader("Content-Type", "application/json")
                     .post(body.toString().toRequestBody("application/json".toMediaType()))
                     .build()
-                http.newCall(req).execute().use { resp ->
+                val client = if (timeoutSec > 0) {
+                    http.newBuilder()
+                        .connectTimeout(minOf(3L, timeoutSec), TimeUnit.SECONDS)
+                        .readTimeout(timeoutSec, TimeUnit.SECONDS)
+                        .callTimeout(timeoutSec + 1, TimeUnit.SECONDS)
+                        .build()
+                } else http
+                client.newCall(req).execute().use { resp ->
                     val text = resp.body?.string().orEmpty()
                     if (!resp.isSuccessful) {
                         AppLog.w("DeepSeek 请求失败 ${resp.code}: ${text.take(200)}")
@@ -155,12 +172,13 @@ object AiService {
         }.getOrNull()
     }
 
-    /** 智能分类：给一条抓取到的账单推荐分类 */
+    /** 智能分类：给一条抓取到的账单推荐分类（抓取路径上用短超时，别拖住记账通知） */
     suspend fun suggestCategory(
         merchant: String,
         rawText: String,
         categories: List<Category>,
-        income: Boolean
+        income: Boolean,
+        timeoutSec: Long = 0
     ): Long? {
         val c = client() ?: return null
         val type = if (income) TxnType.INCOME else TxnType.EXPENSE
@@ -169,7 +187,7 @@ object AiService {
         val list = pool.joinToString("\n") { "${it.id}:${it.name}" }
         val system = "你是中文记账分类器，只输出 JSON：{\"categoryId\": 分类id}。分类只能从给定列表里选。"
         val user = "商户：$merchant\n通知原文：${rawText.take(200)}\n可选分类：\n$list"
-        val raw = c.chat(system, user, jsonMode = true) ?: return null
+        val raw = c.chat(system, user, jsonMode = true, timeoutSec = timeoutSec) ?: return null
         return runCatching {
             val id = parseJsonObject(raw)?.optLong("categoryId", 0) ?: return@runCatching null
             if (pool.any { it.id == id }) id else null

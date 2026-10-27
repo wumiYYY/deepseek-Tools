@@ -1,4 +1,4 @@
-﻿package com.jingyuniang.ledger.capture
+package com.jingyuniang.ledger.capture
 
 import com.jingyuniang.ledger.data.Account
 import com.jingyuniang.ledger.data.AccountType
@@ -30,6 +30,9 @@ object ParseEngine {
         val note: String,
         val matchedRule: String = ""
     )
+
+    /** 关键词命不中、AI 也问不出来时落到的分类名（由 CapturePipeline 按需创建） */
+    const val UNCERTAIN_CATEGORY = "待分类"
 
     /** 垃圾消息关键词：命中直接丢弃 */
     private val JUNK = listOf(
@@ -136,13 +139,13 @@ object ParseEngine {
         val merchant = extractMerchant(raw, appName)
         if (merchant.isNotBlank() && merchant != appName) confidence += 10
 
-        // 5) 分类
+        // 5) 分类：商户记忆（**只认用户亲手教过的**）→ 分类关键词 → 都猜不出就留 0，
+        //    由上层记成「待分类」—— 猜不出来要让人看见，不要伪装成「其他」（v1.4.2 的教训）。
         var categoryId = 0L
-        merchantRules.entries.firstOrNull { merchant.isNotBlank() && (merchant.contains(it.key, true) || it.key.contains(merchant, true)) }
-            ?.let { (_, v) ->
-                categoryId = v.first
-                confidence += 10
-            }
+        matchMerchantRule(merchant, merchantRules)?.let { v ->
+            categoryId = v.first
+            confidence += 10
+        }
         if (categoryId == 0L) {
             categoryId = matchCategory(raw, merchant, direction, categories)
             if (categoryId > 0) confidence += 10
@@ -328,28 +331,114 @@ object ParseEngine {
     }
 
     // ---------- 商户 ----------
+    //
+    // v1.4.2 修的两个真 bug（用真机数据定位的）：
+    //  1. 招行这类「您账户3979于10月27日13:20在【财付通-微信支付-瑞幸咖啡】发生快捷支付扣款」
+    //     原来只认「商户:xxx」标签 → 抽不到 → 退成 App 名「招商银行」；
+    //  2. 退成 App 名以后还被当成真商户**学进 merchant_rule**，于是之后所有招行短信
+    //     都被强制归到第一个撞对的分类（滴滴出行 → 餐饮）。见 isUsableMerchant + CapturePipeline.book。
     private val MERCHANT_PATTERNS = listOf(
-        Regex("""向(.{1,24}?)(?:付款|支付|转账)"""),
+        // 银行/支付通道最爱用的全角方括号：【财付通-微信支付-瑞幸咖啡】
+        Regex("""【([^】]{2,30})】"""),
         Regex("""(?:付款方|收款方|商户名称|商户|商家)[:：]\s*(.{1,24})"""),
+        Regex("""向(.{1,24}?)(?:付款|支付|转账)"""),
         Regex("""(?:在|于)(.{1,24}?)(?:消费|支付|购买)"""),
-        Regex("""(?:付款给|转账给|收款人)[:：]?\s*(.{1,20}?)(?:[,,。\\s]|$)"""),
+        Regex("""(?:付款给|转账给|收款人)[:：]?\s*(.{1,20}?)(?:[,,。\s]|$)"""),
         Regex("""(?:交易对方|对方)[:：]\s*(.{1,24})"""),
-        Regex("""支付成功[-—\s]*(.{1,20}?)(?:[,,。\\s]|$)""")
+        Regex("""支付成功[-—\s]*(.{1,20}?)(?:[,,。\s]|$)""")
     )
+
+    /** 「财付通-微信支付-瑞幸咖啡」里的渠道前缀，剥掉才是真商户 */
+    private val CHANNEL_PREFIXES = listOf(
+        "财付通-微信支付-", "财付通（微信支付）-", "财付通-", "微信支付-", "支付宝-",
+        "云闪付-", "银联-", "快捷支付-", "京东支付-", "美团支付-", "抖音支付-"
+    )
+
+    /**
+     * 这些**不是商户**，是 App / 渠道 / 银行本身。它们一旦被当成商户学进记忆，
+     * 就会把该来源的所有账单锁死到同一个分类（v1.4.1 真机事故的根因）。
+     */
+    private val NOT_A_MERCHANT = listOf(
+        "银行", "信用卡", "储蓄卡", "借记卡", "花呗", "白条", "余额宝", "零钱",
+        "微信支付", "微信", "支付宝", "云闪付", "财付通", "银联", "快捷支付", "支付平台"
+    )
+
+    /** 全角/半角括号里的分店名：`兰溪手擀面（盛夏路店）` → `兰溪手擀面` */
+    private val BRANCH_SUFFIX = Regex("""[（(][^）)]{0,20}店[）)]""")
 
     fun extractMerchant(text: String, fallback: String): String {
         for (p in MERCHANT_PATTERNS) {
-            val m = p.find(text)
-            val v = m?.groupValues?.getOrNull(1)?.trim()?.trim('的', ' ', ',', '.', ':', '，', '。') ?: continue
+            val raw = p.find(text)?.groupValues?.getOrNull(1) ?: continue
+            val v = normalizeMerchant(raw)
             if (v.isEmpty() || v.length < 2) continue
             if (v.containsAny(PAY_CTX)) continue
             if (looksLikeNoise(v)) continue
+            if (!isUsableMerchant(v, fallback)) continue
             return v
         }
         // 「微信支付收款0.01元(朋友到店)」这类写法，退化取括号前的说明
-        val paren = Regex("""[(（](.{2,20})[)）]""").find(text)?.groupValues?.getOrNull(1)?.trim()
-        if (!paren.isNullOrBlank() && !paren.containsAny(PAY_CTX) && !looksLikeNoise(paren)) return paren
+        val paren = Regex("""[(（](.{2,20})[)）]""").find(text)?.groupValues?.getOrNull(1)?.let { normalizeMerchant(it) }
+        if (!paren.isNullOrBlank() && !paren.containsAny(PAY_CTX) && !looksLikeNoise(paren) &&
+            isUsableMerchant(paren, fallback)
+        ) return paren
         return fallback
+    }
+
+    /** 剥渠道前缀、去分店括号、去首尾标点 */
+    fun normalizeMerchant(raw: String): String {
+        var s = raw.trim().trim('的', ' ', ',', '.', ':', '，', '。', '、', '；', ';', '-', '【', '】')
+        var changed = true
+        while (changed) {
+            changed = false
+            for (p in CHANNEL_PREFIXES) {
+                if (s.startsWith(p)) {
+                    s = s.removePrefix(p).trim().trim('-', ':', '，', ' ')
+                    changed = true
+                }
+            }
+        }
+        s = BRANCH_SUFFIX.replace(s, "").trim()
+        return s
+    }
+
+    /**
+     * 这个「商户」能不能拿去学习/展示为商户？
+     * 纯 App 名、纯银行/渠道名、纯分店名（盛夏路店）一律不算 —— 它们学进去就是灾难。
+     */
+    fun isUsableMerchant(merchant: String, appName: String = ""): Boolean {
+        val m = merchant.trim()
+        if (m.length < 2) return false
+        if (m.count { it.isDigit() } >= 3) return false
+        if (looksLikeNoise(m)) return false
+        if (appName.isNotBlank() && (m == appName || m.contains(appName) || appName.contains(m))) return false
+        val norm = normalizeMerchant(m)
+        // 用 contains 而不是 ==：真机上写进去的是「招商银行」「财付通-微信支付」这种带前缀的串
+        if (NOT_A_MERCHANT.any { norm.contains(it) }) return false
+        // 「盛夏路店」这种只有分店名的串，学进去等于把一条街的所有店并成一个分类
+        if (norm.endsWith("店") && norm.length <= 6) return false
+        return true
+    }
+
+    /**
+     * 商户记忆匹配（只认用户亲手教过的商户名）。
+     * 从「双向 contains」改成「完全相等 > 前缀/包含（规则名 ≥3 字）」：
+     * 双向匹配会让一条 `微信` 的记忆吃掉所有微信账单，这是 v1.4.1 串味的直接原因。
+     */
+    fun matchMerchantRule(
+        merchant: String,
+        rules: Map<String, Pair<Long, Long>>
+    ): Pair<Long, Long>? {
+        val m = merchant.trim()
+        if (m.length < 2 || rules.isEmpty()) return null
+        // 老版本（v1.4.1 及以前）把「招商银行」「盛夏路店」这类垃圾键学进过 merchant_rule。
+        // 这里直接把不合格的键过滤掉 —— 等于**自动中和历史污染**，不需要删数据库。
+        val usable = rules.filterKeys { isUsableMerchant(it) }
+        if (usable.isEmpty()) return null
+        usable[m]?.let { return it }
+        return usable.entries
+            .filter { it.key.length >= 3 && m.contains(it.key, ignoreCase = true) }
+            .maxByOrNull { it.key.length }
+            ?.value
     }
 
     /** 日期、时间、卡号、金额这类「看起来是商户其实不是」的串要排掉 */
@@ -384,7 +473,10 @@ object ParseEngine {
             }
         }
         if (bestId > 0L) return bestId
-        return categories.firstOrNull { it.type == type && it.name == "其他" }?.id ?: 0L
+        // ⚠️ 返回 0 = 「真的猜不出来」。不要退回「其他」：
+        // 那会让「没分类」伪装成「其他」，统计里看着很笼统，用户也没法知道哪些是猜的。
+        // 上层 CapturePipeline 会把 0 落成一个独立的「待分类」分类。
+        return 0L
     }
 
     /**
