@@ -347,6 +347,8 @@ $A="com.jingyuniang.vault/com.jingyuniang.ledger.MainActivity"
 
 **先读 `docs/在线升级.md`**（服务器、凭证、发布、校验、失败处理都在里面）。要点：
 
+若旧交接环境提示缺少 `WHALE_UPDATE_TOKEN`，不要重新生成 token 或改服务器凭据。让现有发布者运行 `scripts/make-handover.ps1`，通过私密渠道拿到 ZIP；`git pull` 后运行 `python scripts/publishing-config.py import --bundle "<ZIP路径>"`，再运行 `python scripts/deploy-update.py --check`。此检查不需要新 APK，只读验证 HTTPS、SSH 和 sudo；SSH 登录密码需要独立私密交接。详细步骤见 `docs/在线升级.md` 的「合作者首次配置」。
+
 | 环节 | 实现 |
 |---|---|
 | 入口 | 「我的 → 关于 → 检查更新」+ 启动后每天静默检查一次（有新版本才提示） |

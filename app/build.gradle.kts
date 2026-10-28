@@ -30,6 +30,15 @@ val signingProps = Properties().apply {
 fun signingValue(propKey: String, envKey: String): String? =
     System.getenv(envKey)?.takeIf { it.isNotBlank() } ?: signingProps.getProperty(propKey)?.takeIf { it.isNotBlank() }
 
+// 单测/debug 不需要私密发布凭据；正式包必须沿用现有 token，不能静默打出无法更新的包。
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        require(signingValue("WHALE_UPDATE_TOKEN", "WHALE_UPDATE_TOKEN")?.matches(Regex("[a-f0-9]{64}")) == true) {
+            "Missing WHALE_UPDATE_TOKEN: import the existing private publishing bundle with scripts/publishing-config.py import --bundle <zip> before building a release. Do not generate a new token."
+        }
+    }
+}
+
 android {
     namespace = "com.jingyuniang.ledger"
     compileSdk = 35
