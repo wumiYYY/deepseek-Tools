@@ -1,7 +1,7 @@
 # 开发交接 · 给下一个 Agent
 
 > **这份文档是给「接手的 AI/开发者」看的**：读完它 + `docs/HANDOFF.md`，你应该能直接开工、改代码、
-> 上真机验证、发版，而不用重新摸索。写于 **2026-10-27 / v1.4.5**。
+> 上真机验证、发版，而不用重新摸索。**更新于 2026-10-28 / v1.4.7**（含合作者 PR #1：公司 AI + 在线升级）。
 >
 > 阅读顺序建议：§0 速览 → §1 十五分钟上手 → §2 架构地图 → **§6 红线 + §7 坑**（最容易犯错的都在这）
 > → §9 下一步。
@@ -15,15 +15,16 @@
 | 项 | 值 |
 |---|---|
 | 产品 | 鲸鱼娘金库 · 安卓记账 App（Kotlin + Compose，纯本地，无账号、无广告 SDK） |
-| 版本 | **v1.4.5** / versionCode **10405** / 数据库 schema **v2**（自 v1.3.0 起未变） |
+| 版本 | **v1.4.7** / versionCode **10407** / 数据库 schema **v2**（自 v1.3.0 起未变）；1.4.6 公司 AI、1.4.7 在线升级由合作者 PR #1 合入 |
 | 包名 | `com.jingyuniang.vault`（**不能改**，改了老用户装不上） |
 | 仓库 | `https://github.com/wumiYYY/deepseek-Tools`（**公开**，所以任何秘密都不能进 git） |
-| 提交 | `main` HEAD 见 `git log -1`；tag 已到 **v1.4.5**，全部已 push |
-| CI | GitHub Actions：`单元测试（191 个）` + `规则文件校验`，**当前绿**；红灯不许合 |
-| 产物 | `dist/1.4.5/鲸鱼娘金库-v1.4.5.apk`（24.59 MB，仅 arm64-v8a） |
+| 提交 | `main` HEAD 见 `git log -1`（`1ccd152` = PR #1 合并）；本会话 tag 到 **v1.4.5**，1.4.6/1.4.7 由合作者发布 |
+| CI | GitHub Actions：`单元测试（218 个）` + `规则文件校验`，**当前绿**；红灯不许合 |
+| 产物 | 本机 `dist/` 到 **1.4.5**；1.4.6/1.4.7 在合作者构建机产出，已发布到更新服务器 |
+| 在线升级 | 1.4.7 起：`我的 → 关于 → 检查更新` + 启动每天静默一次；清单 `https://161.118.233.45/whale-vault/update.json`（需 `X-Whale-Update-Token`，见 §13） |
 | 签名 | keystore `keystore/jingyuniang-release.jks`（**不入库**），别名 `jingyuniang`，证书 SHA-256 `e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975`（CN=JingYuniang） |
 | 口令 | **仓库里没有**（公开仓库）。本机在 `local.properties`；对外发的是私密交接包 |
-| 测试机 | Redmi K80 / Android 16 / HyperOS，adb serial **`bd7a85e9`**，用户已装 v1.4.5 |
+| 测试机 | Redmi K80 / Android 16 / HyperOS，adb serial **`bd7a85e9`**；本会话最后装的是 v1.4.5，**1.4.6/1.4.7 未在本机回归** |
 | 真实账本 | 38 笔、`pendingCaptures=0`、`blocklist=1`；账户 `1:现金 8:微信 9:招商银行` |
 | 余额基线 | `1:0, 8:25000, 9:1077100`（**单位是分**：微信 ¥250、招行 ¥10,771.00） |
 
@@ -87,10 +88,13 @@ app/src/main/
 │   │   ├── AccountMove.kt         ← 【删账户时搬账目，v1.4.5】
 │   │   ├── SeedData.kt            ← 默认分类/账户/规则 + KEYWORD_REV（分类词表版本）
 │   │   └── Prefs.kt               ← DataStore 设置
-│   ├── ai/                        ← DeepSeekClient + AiService + AiAgent（工具路由）
+│   ├── ai/                        ← AiEndpoint（端点/模型选择）+ DeepSeekClient + AiService + AiAgent（工具路由）
 │   ├── io/BackupManager.kt        ← 加密备份 .whalebk（AES-GCM）
 │   ├── io/SnapshotManager.kt      ← 自动快照（迁移前 db 复制 + 每日 JSON）
-│   ├── ui/                        ← Compose：Home/Capture/Stats/Plan/Settings/CategoryScreen…
+│   ├── update/                    ← 【v1.4.7】UpdateClient（清单/下载/校验）+ ApkInstaller + AppUpdateViewModel
+│   ├── ui/                        ← Compose：Home/Capture/Stats/Plan/Settings/CategoryScreen/AppUpdateDialog…
+├── scripts/                       ← build/release/setup-*/make-handover/make-update-json +【v1.4.7】deploy-update.py / update-server-*.py / ssh-proxy.py
+├── docs/在线升级.md                ← 【v1.4.7】更新服务器、凭证、发布与校验全流程（接手必读）
 │   └── util/AppLog.kt             ← 日志（tag `WhaleMoney`，一律包 runCatching，否则单测炸）
 └── test/java/.../                 ← 191 个单测（§5 有清单）
 ```
@@ -173,6 +177,11 @@ app/src/main/
 6. **结论要说清是"实测"还是"推断"**。这个项目里所有数值性结论都有真机日志/单测支撑，别写成"应该可以"。
 7. **素材授权**：立绘 CC BY-NC-SA 4.0 + 原作者版权 → **只能个人非商业使用**，不得上架商店、不得公开分发 APK。
    要公开分发必须先换素材。
+8. **更新目录的凭证只能注入、不能入库**：`WHALE_UPDATE_TOKEN` 从 `local.properties` / 环境变量经
+   `buildConfigField` 编进 App；它是 `/whale-vault/` 的访问凭证，**不是服务器登录密码**，
+   更不要用 sudo 密码或 SSH 私钥代替。
+9. **签名私钥永不离开构建机**：`deploy-update.py` 只上传 APK / 清单 / 脚本，
+   不传 jks、签名口令、AI Key、SSH 密码；首连记录主机公钥、之后校验。
 
 ---
 
@@ -255,6 +264,9 @@ $A="com.jingyuniang.vault/com.jingyuniang.ledger.MainActivity"
 
 | 优先级 | 任务 | 验收标准（做完怎么算过） |
 |---|---|---|
+| ~~P3~~ | ~~App 内检查更新~~ | ✅ **v1.4.7 合作者已做**（见 §13）：清单 + token + 下载校验 + 系统安装器 |
+| ~~P2~~ | ~~公司 AI 端点~~ | ✅ **v1.4.6 合作者已做**（见 §14）：AiEndpoint 三选一 + 保存即测 |
+| **P0** | **装 1.4.7 回归** | 本机还没装过 1.4.6/1.4.7：装上后必须复核 txnCount / balances 与 §0 一致、抓取与分类仍对、检查更新能拿到版本或给出正确失败提示 |
 | **P1** | **孤儿账目修复入口**：账户在 v1.4.5 之前被删过，账目挂在已删 id 上（当前账本就有：旧账户 2/3/7）。在「账户管理」加「这 N 笔挂在不存在的账户上 → 一键迁到某账户」 | `Repo.orphanTxnCount()` 归 0；迁移前后总资产守恒；`BalanceFlowTest` 加 2 条 |
 | **P1** | P1-6 图片附件：记账拍小票存图（`res/xml/file_paths.xml` 已有 `files-path receipts/` 与 `cache-path`） | 拍照 → 存 `filesDir/receipts` → 明细可看 → 加密备份里带 photos 字段 |
 | P1 | keystore 口令轮换（见 §10） | 用新口令能签名；`apksigner` 指纹不变 |
@@ -296,6 +308,7 @@ $A="com.jingyuniang.vault/com.jingyuniang.ledger.MainActivity"
 
 | 项 | 证据 |
 |---|---|
+| ⚠️ 1.4.6 / 1.4.7 的结论来源 | 来自合作者的 PR #1 与 `CHANGELOG.md` / `docs/在线升级.md`，**本机未安装验证**（本会话只验到 1.4.5）。接手第一件事就是装上 1.4.7 复核 §0 那张表 |
 | 数据不丢（1.3.2→1.4.0→…→1.4.5 多轮升级） | 每轮装完 `txnCount`/`balances` 与升级前逐字一致；配置全保留；自动快照每次生成一份 |
 | 分类准确 | 12 条招行句式批量重放 **12/12 对**；`滴滴出行→交通`、`瑞幸咖啡→餐饮`、`携程酒店→旅行`、`iCloud月费→订阅` |
 | 分类兜底 | 关键词不命中 → AI 判成餐饮（张记饼铺）；断网 → ❓待分类（赵六杂货） |
@@ -309,7 +322,7 @@ $A="com.jingyuniang.vault/com.jingyuniang.ledger.MainActivity"
 
 ---
 
-## 12. 单测清单（191 个）
+## 12. 单测清单（218 个）
 
 | 文件 | 覆盖 |
 |---|---|
@@ -320,7 +333,53 @@ $A="com.jingyuniang.vault/com.jingyuniang.ledger.MainActivity"
 | `TransferFlowTest` | 6 条：`cmb.pb` 包名、零钱充值=转移、账户不被「微信」抢、双边目标识别 |
 | `BalanceFlowTest` | 20 条：余额调整/收到转账/双边转账/信用卡还款/自转净0/孤儿/迁移守恒 |
 | `RuleGuideTest` | 12 条：25 条「人话建议」逐条真加一遍 + 导出往返不丢词 + 能撤回 |
+| `AiEndpointTest` | 10 条（合作者）：端点/模型三选一、旧配置迁移、非法值回退 |
+| `DeepSeekClientTest` | 7 条（合作者）：请求构造/JSON 模式/错误分支 |
+| `UpdateClientTest` | 10 条（合作者）：清单解析、渠道/路径校验、版本比较、sha256 与大小校验、重定向拒绝 |
 | `RuleStoreTest` / `SnapshotVersionTest` / `CaptureFiltersTest` / `ParseEngineTest` / `BalanceParserTest` / `BillImporterTest` / `CaptureBlocklistTest` | 规则加载/快照/schema/闸门/解析/余额 OCR/账单导入/黑名单 |
 
 **加测试的默认姿势**：把真机原文抄进用例（别自己编），断言"余额/分类/是否入账"这类**可观测结果**，
 而不是只断言函数返回中间值。
+
+---
+
+## 13. 在线升级（v1.4.7，合作者 PR #1 合入）
+
+**先读 `docs/在线升级.md`**（服务器、凭证、发布、校验、失败处理都在里面）。要点：
+
+| 环节 | 实现 |
+|---|---|
+| 入口 | 「我的 → 关于 → 检查更新」+ 启动后每天静默检查一次（有新版本才提示） |
+| 清单 | `https://161.118.233.45/whale-vault/update.json`（`BuildConfig.UPDATE_MANIFEST_URL` 硬编码在 `app/build.gradle.kts`） |
+| 鉴权 | 请求带 `X-Whale-Update-Token`（`BuildConfig.UPDATE_TOKEN`，来自 `local.properties` 的 `WHALE_UPDATE_TOKEN`，64 位小写 hex）；缺凭证服务器回 404 |
+| 客户端 | `update/UpdateClient.kt`（解析清单、限 channel/版本/相对路径、**不跟随重定向**）→ 下载到 cache → 校验大小 + SHA256 → `update/ApkInstaller.kt` 校验**包名 / versionCode / versionName / 原版证书与当前安装证书一致** → 系统安装器 |
+| 权限 | `AndroidManifest.xml` 已加 `REQUEST_INSTALL_PACKAGES`；首次允许「安装未知应用」后继续安装 |
+| 发布 | `.\scripts\release.ps1 -PrepareUpdate -UpdateNotes "…"` → `dist/publish/whale-vault/`；再 `python scripts/deploy-update.py`（SSH 只传小文件，APK 走临时 HTTPS 上传口；**APK 先落盘、清单最后原子替换**；拒绝更低版本、拒绝同版本换包） |
+| 红线 | 清单里不做「静默安装」；不关闭证书校验、不固定短期 Let's Encrypt 证书；签名私钥不上服务器 |
+
+**接手注意**：更新链路只有在**真正发布过一次**之后才有端到端数据。改这块时优先跑 `UpdateClientTest`
+（10 条纯逻辑用例，覆盖重定向/渠道/路径穿越/版本比较），再用 `curl -H "X-Whale-Update-Token: …"` 手动验清单。
+
+---
+
+## 14. 公司 AI 端点（v1.4.6，合作者 PR #1 合入）
+
+- `ai/AiEndpoint.kt`：三个预设（**公司 litellm** / DeepSeek 官方 / 自定义 OpenAI 兼容），
+  `DEFAULT_BASE_URL` / `DEFAULT_MODEL` 现在指向公司端点（`https://litellm.southchips.net` + `sc-deepseek-flash`）。
+- `Prefs` 用 `AiEndpoint.resolveSavedConfig(...)` 做兼容：**未配置 AI 的旧安装默认切公司配置**，
+  已保存的服务配置与旧官方 Key 保留原用途。
+- 「保存并测试」用刚保存的配置发一次**真实 JSON 请求**，显示认证/网络/模型错误，
+  **不再把本地兜底当成连接成功**。
+- ⚠️ 公开仓库里出现了公司内网域名。这不是凭证，但属于基础设施信息；
+  若在意可改成 `BuildConfig` 注入或只留占位符（改动需同步 `AiEndpointTest`）。
+
+---
+
+## 15. 合并他人 PR 时的注意（本会话踩过）
+
+1. 先 `git fetch` 再 `git pull --rebase`；**推送被拒不要强推**（`1ccd152` 就是合作者的 PR 合并）。
+2. 文档冲突常见（双方都在改 `HANDOFF.md` / `合作者交接.md`）：逐块合并，**不要整文件选一侧**。
+3. `git rebase --continue` 会打开编辑器卡住 → `$env:GIT_EDITOR="true"` 或 `git -c core.editor=true rebase --continue`。
+4. **用 PowerShell 构造中文文档字符串时别用反引号**：`` `t ``→TAB、`` `b ``→退格，会把 `txnCount`/`balances`
+   写成 `\tnCount`/`alances`（本会话真踩）。要么用编辑工具，要么写完 grep 一遍控制字符 `[\x00-\x08\x0b\x0c\x0e-\x1f]`。
+5. 合完先跑 `:app:testDebugUnitTest`（218 个）+ 核对 `git status`，再 push。
