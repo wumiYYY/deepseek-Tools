@@ -1,6 +1,7 @@
 # 鲸鱼娘金库 · 会话交接（HANDOFF）
 
 > **给下一个会话的自己 / 给合作者**：读完这一份就能接手，不用重新摸索。
+> **如果把开发工作转给另一个 AI/agent，先让它读 `docs/AGENT_HANDOFF.md`**（一页速览 + 架构 + 红线 + 坑 + backlog，是这份的"蒸馏版"）。
 > 面向使用者的说明书是 `docs/用户指引.md`；抓取规则的**定版规范**是 `docs/CAPTURE_RULES_V1.md`；
 > 协作流程是 `CONTRIBUTING.md`；发版流程是 `docs/RELEASE.md`；
 > **要拿签名、要部署服务器 / 做内置更新、想看红线 → `docs/合作者交接.md`**。
@@ -360,7 +361,10 @@ app/src/main/
   **默认不带 APK**（一升级就过期，省得每次重发 17MB；签名对照看证书指纹就够；要带加 `-IncludeApk`）。
   只有「新合作者 / 口令变了 / 想给对方最新文档快照」才需要重发 —— 发新版本一律走 git。
   这两个路径都在**仓库外**，`git add -A` 带不走。
-- **三个口令**：`WHALE_STORE_PASSWORD` = `WHALE_KEY_PASSWORD` = `<SIGNING_PASSWORD>`，`WHALE_KEY_ALIAS` = `jingyuniang`。
+- **三个口令**：`WHALE_STORE_PASSWORD` / `WHALE_KEY_PASSWORD` / `WHALE_KEY_ALIAS`（别名 `jingyuniang`）。
+  **口令不进仓库**（这是公开仓库）—— 只放在本机 `local.properties` 与私密交接包里；文档里一律写 `<SIGNING_PASSWORD>`。
+  ⚠️ 2026-10-27 之前这两个文档里曾明文写过口令，已清除，但**git 历史里还在**，
+  建议轮换（命令见 `docs/AGENT_HANDOFF.md` §10；轮换不换钥匙、证书指纹不变）。
   ⚠️ `setup-signing.ps1` 旧默认别名是 `whale`（错的，已修成 `jingyuniang`），手上若是旧脚本要自己传 `-KeyAlias`。
 - **证书指纹**：`SHA-256 = e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975`（CN=JingYuniang）。
   `dist/1.3.2` 的 APK 与 `keystore/jingyuniang-release.jks` 已核对一致；密钥有效期到 2056-10-14。

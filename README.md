@@ -1,4 +1,5 @@
 > **想参与开发？** 看 [CONTRIBUTING.md](CONTRIBUTING.md)：环境、改规则、测试、分支、签名、发版全在里面。
+> **想把开发转给另一个 AI / agent？** 给它 [docs/AGENT_HANDOFF.md](docs/AGENT_HANDOFF.md)：一页速览、架构地图、红线、39 个坑、backlog 与验收标准。
 > **接了手要签名 / 要部署服务器 / 要做 App 内更新？** 看 [docs/合作者交接.md](docs/合作者交接.md)（含 `update.json` 格式、nginx 片段和 6 条红线）。
 > **只想用？** 看 [docs/用户指引.md](docs/用户指引.md)。
 > **许可证**：代码 MIT，角色素材 CC BY-NC-SA 4.0（禁止商用）→ [LICENSE](LICENSE)
