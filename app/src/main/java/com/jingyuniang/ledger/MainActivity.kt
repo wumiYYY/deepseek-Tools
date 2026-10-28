@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val vm: AppViewModel by viewModels()
+    private val updateVm: com.jingyuniang.ledger.update.AppUpdateViewModel by viewModels()
     private val quickActionInternal = MutableStateFlow<String?>(null)
     private val quickAction: kotlinx.coroutines.flow.StateFlow<String?> = quickActionInternal.asStateFlow()
 
@@ -81,10 +82,11 @@ class MainActivity : ComponentActivity() {
                     )
                 } else {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        WhaleRoot(vm, action, bootRoute) { quickActionInternal.value = null }
+                        WhaleRoot(vm, action, bootRoute, onCheckUpdate = { updateVm.check() }) { quickActionInternal.value = null }
                         if (showingSplash) {
                             SplashCurtain { showingSplash = false }
                         }
+                        if (!showingSplash) AppUpdateDialog(updateVm)
                     }
                 }
             }
@@ -577,6 +579,7 @@ fun WhaleRoot(
     vm: AppViewModel,
     quickAction: String?,
     initialRoute: String? = null,
+    onCheckUpdate: () -> Unit,
     onConsumeAction: () -> Unit
 ) {
     val p = WhaleTheme.palette
@@ -660,7 +663,7 @@ fun WhaleRoot(
             composable("settings-ai") { AiSettingsScreen(vm) { nav.popBackStack() } }
             composable("settings-data") { DataScreen(vm) { nav.popBackStack() } }
             composable("settings-permission") { PermissionWizardScreen(vm) { nav.popBackStack() } }
-            composable("settings-about") { AboutScreen { nav.popBackStack() } }
+            composable("settings-about") { AboutScreen(onBack = { nav.popBackStack() }, onCheckUpdate = onCheckUpdate) }
             composable(
                 route = "add?txnId={txnId}",
                 arguments = listOf(navArgument("txnId") {

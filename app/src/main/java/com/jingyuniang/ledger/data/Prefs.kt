@@ -1,6 +1,7 @@
 package com.jingyuniang.ledger.data
 
 import android.content.Context
+import com.jingyuniang.ledger.ai.AiEndpoint
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -16,15 +17,14 @@ import kotlinx.coroutines.flow.map
 
 private val Context.prefStore: DataStore<Preferences> by preferencesDataStore(name = "whale_settings")
 
-/** 默认接口：DeepSeek 官方（OpenAI 兼容）。换服务商只改 Settings.apiBase。 */
-const val DEFAULT_API_BASE = "https://api.deepseek.com"
+/** 默认接口：公司 AI（OpenAI 兼容）。 */
+const val DEFAULT_API_BASE = AiEndpoint.DEFAULT_BASE_URL
 
 data class Settings(
     val ledgerId: Long = 0,
     val aiEnabled: Boolean = true,
     val apiKey: String = "",
-    val model: String = "deepseek-chat",
-    /** 接口地址：任何 **OpenAI 兼容** 的 /chat/completions 端点都行（DeepSeek/Kimi/智谱/通义/本地 Ollama…） */
+    val model: String = AiEndpoint.DEFAULT_MODEL,
     val apiBase: String = DEFAULT_API_BASE,
     /** 高置信度自动入账 */
     val autoBook: Boolean = true,
@@ -61,6 +61,7 @@ class Prefs(private val ctx: Context) {
         val aiEnabled = booleanPreferencesKey("ai_enabled")
         val apiKey = stringPreferencesKey("api_key")
         val model = stringPreferencesKey("model")
+        val baseUrl = stringPreferencesKey("ai_base_url")
         val apiBase = stringPreferencesKey("api_base")
         val autoBook = booleanPreferencesKey("auto_book")
         val threshold = intPreferencesKey("auto_book_threshold")
@@ -86,12 +87,13 @@ class Prefs(private val ctx: Context) {
     }
 
     val flow: Flow<Settings> = ctx.prefStore.data.map { p ->
+        val aiConfig = AiEndpoint.resolveSavedConfig(p[K.apiBase] ?: p[K.baseUrl], p[K.model], !p[K.apiKey].isNullOrBlank())
         Settings(
             ledgerId = p[K.ledgerId] ?: 0,
             aiEnabled = p[K.aiEnabled] ?: true,
             apiKey = p[K.apiKey] ?: "",
-            model = p[K.model] ?: "deepseek-chat",
-            apiBase = p[K.apiBase] ?: DEFAULT_API_BASE,
+            model = aiConfig.model,
+            apiBase = aiConfig.baseUrl,
             autoBook = p[K.autoBook] ?: true,
             autoBookThreshold = p[K.threshold] ?: 80,
             captureNotify = p[K.captureNotify] ?: true,
@@ -119,6 +121,14 @@ class Prefs(private val ctx: Context) {
     suspend fun setApiKey(v: String) = put(K.apiKey, v)
     suspend fun setModel(v: String) = put(K.model, v)
     suspend fun setApiBase(v: String) = put(K.apiBase, v)
+    suspend fun setAiConfig(baseUrl: String, apiKey: String, model: String) {
+        ctx.prefStore.edit {
+            it[K.apiBase] = baseUrl
+            it[K.apiKey] = apiKey
+            it[K.model] = model
+            it[K.aiEnabled] = true
+        }
+    }
     suspend fun setAutoBook(v: Boolean) = put(K.autoBook, v)
     suspend fun setThreshold(v: Int) = put(K.threshold, v)
     suspend fun setCaptureNotify(v: Boolean) = put(K.captureNotify, v)

@@ -360,7 +360,7 @@ app/src/main/
   **默认不带 APK**（一升级就过期，省得每次重发 17MB；签名对照看证书指纹就够；要带加 `-IncludeApk`）。
   只有「新合作者 / 口令变了 / 想给对方最新文档快照」才需要重发 —— 发新版本一律走 git。
   这两个路径都在**仓库外**，`git add -A` 带不走。
-- **三个口令**：`WHALE_STORE_PASSWORD` = `WHALE_KEY_PASSWORD` = `whalemoney2024`，`WHALE_KEY_ALIAS` = `jingyuniang`。
+- **三个口令**：`WHALE_STORE_PASSWORD` = `WHALE_KEY_PASSWORD` = `<SIGNING_PASSWORD>`，`WHALE_KEY_ALIAS` = `jingyuniang`。
   ⚠️ `setup-signing.ps1` 旧默认别名是 `whale`（错的，已修成 `jingyuniang`），手上若是旧脚本要自己传 `-KeyAlias`。
 - **证书指纹**：`SHA-256 = e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975`（CN=JingYuniang）。
   `dist/1.3.2` 的 APK 与 `keystore/jingyuniang-release.jks` 已核对一致；密钥有效期到 2056-10-14。

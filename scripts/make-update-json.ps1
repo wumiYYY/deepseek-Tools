@@ -43,6 +43,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+$env:JAVA_HOME = Join-Path $root ".toolchain\jdk17"
 $distRoot = Join-Path $root "dist"
 
 # ---- 1. 选版本 ----
@@ -68,12 +69,13 @@ $apksigner = Join-Path $root ".toolchain\android-sdk\build-tools\35.0.0\apksigne
 $fp = ""
 if (Test-Path $apksigner) {
     $out = & $apksigner verify --print-certs $apkSrc.FullName 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "APK 签名验证失败，停止生成更新信息" }
     $m = [regex]::Match($out, "SHA-256 digest:\s*([0-9A-Fa-f]+)")
     if ($m.Success) { $fp = $m.Groups[1].Value.ToLower() }
 }
 $expected = "e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975"
 if ($fp -eq "") {
-    Write-Host "⚠️ 没读到签名指纹（apksigner 不可用或包没签名），update.json 里 signatureSha256 留空" -ForegroundColor Yellow
+    throw "未读取到 APK 签名，停止生成更新信息"
 } elseif ($fp -ne $expected) {
     Write-Host "❌ 这个包的签名指纹是 $fp，不是原版 $expected —— 老用户装不上，已中止" -ForegroundColor Red
     exit 1
@@ -86,24 +88,28 @@ $verDir = Join-Path $PublishDir $Version
 New-Item -ItemType Directory -Force -Path $verDir | Out-Null
 $apkName = "jingyuniang-v$Version.apk"
 Copy-Item $apkSrc.FullName (Join-Path $verDir $apkName) -Force
+$aapt = Join-Path $root ".toolchain\android-sdk\build-tools\35.0.0\aapt.exe"
+$badging = & $aapt dump badging (Join-Path $verDir $apkName) 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or !$badging.Contains("name='com.jingyuniang.vault'") -or
+    !$badging.Contains("versionCode='$versionCode'") -or !$badging.Contains("versionName='$Version'")) {
+    throw "APK 包名或版本与发布目录不一致"
+}
 "$sha  $apkName" | Set-Content -Path (Join-Path $verDir "SHA256SUMS.txt") -Encoding UTF8
 
 # ---- 4. 写 update.json（无 BOM！JSON 带 BOM 有些客户端会解析失败）----
 $now = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
-$json = @"
-{
-  "versionCode": $versionCode,
-  "versionName": "$Version",
-  "apk": "$Version/$apkName",
-  "sha256": "$sha",
-  "sizeBytes": $size,
-  "signatureSha256": "$fp",
-  "channel": "$Channel",
-  "publishedAt": "$now",
-  "minSupportedVersionCode": $MinSupportedVersionCode,
-  "notes": "$Notes"
-}
-"@
+$json = [ordered]@{
+    versionCode = $versionCode
+    versionName = $Version
+    apk = "$Version/$apkName"
+    sha256 = $sha
+    sizeBytes = $size
+    signatureSha256 = $fp
+    channel = $Channel
+    publishedAt = $now
+    minSupportedVersionCode = $MinSupportedVersionCode
+    notes = $Notes
+} | ConvertTo-Json -Depth 4
 $jsonPath = Join-Path $PublishDir "update.json"
 [System.IO.File]::WriteAllText($jsonPath, $json, (New-Object System.Text.UTF8Encoding($false)))
 
@@ -117,4 +123,4 @@ Write-Host "=== 记得做的事 ===" -ForegroundColor Cyan
 Write-Host "  1) 把 $PublishDir 整个同步到服务器：$BaseUrl"
 Write-Host "  2) update.json 必须 Cache-Control: no-store（否则客户端一直拿旧版本号）"
 Write-Host "  3) 静态目录别开门，至少 Basic Auth / 签名 URL（素材授权：不能公开分发）"
-Write-Host "  4) 客户端侧「检查更新」还没实现，见 docs/合作者交接.md §4.4"
+Write-Host "  4) python scripts/deploy-update.py --publish-dir $PublishDir（SSH 密码交互输入，不上传签名私钥）"

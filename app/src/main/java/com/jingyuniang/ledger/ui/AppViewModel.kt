@@ -7,6 +7,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jingyuniang.ledger.Services
 import com.jingyuniang.ledger.ai.AiProposal
+import com.jingyuniang.ledger.ai.AiEndpoint
+import com.jingyuniang.ledger.ai.DeepSeekClient
+import com.jingyuniang.ledger.ai.parseJsonObject
 import com.jingyuniang.ledger.ai.AiService
 import com.jingyuniang.ledger.data.Account
 import com.jingyuniang.ledger.data.AutoRule
@@ -32,6 +35,7 @@ import com.jingyuniang.ledger.util.AppLog
 import com.jingyuniang.ledger.util.Dates
 import com.jingyuniang.ledger.util.Fmt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -414,6 +418,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAiEnabled(v: Boolean) = scope.launch { prefs.setAiEnabled(v) }
     fun setApiKey(v: String) = scope.launch { prefs.setApiKey(v) }
     fun setModel(v: String) = scope.launch { prefs.setModel(v) }
+    fun saveAndTestAi(baseUrl: String, apiKey: String, model: String, onResult: (String) -> Unit) = scope.launch {
+        var saved = false
+        val result = runCatching {
+            val url = AiEndpoint.normalizeBaseUrl(baseUrl)
+            val key = apiKey.trim()
+            val modelName = model.trim()
+            require(modelName.isNotEmpty()) { "请填写模型名称" }
+            require(key.all { it.code in 33..126 }) { "API Key 不能包含空格、换行或中文字符" }
+            prefs.setAiConfig(url, key, modelName)
+            saved = true
+            if (key.isBlank()) return@runCatching "已保存，未填写 API Key，使用本地规则"
+            // 直接使用本次保存的配置，不依赖异步更新的全局设置，也不触发记账。
+            val response = DeepSeekClient(key, modelName, url).chatResult(
+                "你是连接测试助手。只输出 JSON 对象，字段 amount 为数字，单位为元。",
+                "测试十二元",
+                jsonMode = true
+            ).getOrThrow()
+            check(parseJsonObject(response)?.optDouble("amount") == 12.0) {
+                "已连接，但模型返回的记账 JSON 不符合预期"
+            }
+            "已保存，连通成功 ✅ 模型：$modelName"
+        }
+        result.fold(onSuccess = onResult, onFailure = {
+            if (it is CancellationException) throw it
+            val message = when (it) {
+                is java.net.UnknownHostException -> "无法解析接口地址，请检查网络或公司内网连接"
+                is java.net.SocketTimeoutException -> "连接超时，请检查网络后重试"
+                is java.io.IOException -> "网络连接失败，请检查网络或公司内网连接"
+                is IllegalArgumentException, is IllegalStateException -> it.message ?: "请检查接口配置"
+                else -> "响应解析失败，请检查接口地址和模型名称"
+            }
+            onResult(if (saved) "已保存，测试未通过：$message" else "未保存：$message")
+        })
+    }
     fun setApiBase(v: String) = scope.launch { prefs.setApiBase(v) }
     fun setReminderEnabled(v: Boolean) = scope.launch { prefs.setReminderEnabled(v) }
     fun setBudgetAlert(v: Boolean) = scope.launch { prefs.setBudgetAlert(v) }

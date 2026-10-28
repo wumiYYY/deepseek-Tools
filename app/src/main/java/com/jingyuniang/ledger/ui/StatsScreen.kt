@@ -200,7 +200,7 @@ fun StatsScreen(vm: AppViewModel, onOpenAiSettings: () -> Unit) {
                                 aiLoading = true
                                 vm.aiReview { text ->
                                     aiLoading = false
-                                    aiReview = if (text.isBlank()) "在「AI 设置」里填一个 DeepSeek API Key，就能让鲸鱼娘帮你写月报了～" else text
+                                    aiReview = if (text.isBlank()) "在「AI 设置」里配置接口地址、Key 和模型，就能让鲸鱼娘帮你写月报了～" else text
                                 }
                             }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -219,7 +219,7 @@ fun StatsScreen(vm: AppViewModel, onOpenAiSettings: () -> Unit) {
                 if (settings.aiEnabled && settings.apiKey.isBlank()) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "点这里配置 DeepSeek API Key →",
+                        "点这里配置 AI 接口 →",
                         color = p.primary, fontSize = 12.sp,
                         modifier = Modifier.clickable { onOpenAiSettings() }
                     )

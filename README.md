@@ -11,6 +11,24 @@
 > ⚠️ **素材授权**：立绘来自「深海女仆工坊」皮肤（CC BY-NC-SA 4.0，链：上善 → ZipZipPipe → Small-tailqwq）+ 蓝色大肥鱼存档（版权归原作者）。
 > **仅限个人非商业使用，不可上架应用商店**。App「关于」页已署名；代码里的图片仅按原授权随项目保留。
 
+## AI 接口配置
+
+「我的 → AI 设置」支持公司 AI、DeepSeek 官方和其他 OpenAI 兼容服务：
+
+- **公司 AI（默认）**：自动选中「公司 AI」，默认地址为 `https://litellm.southchips.net`，模型为 `sc-deepseek-flash`；填写公司 Key 后点「保存并测试」。
+- **DeepSeek 官方**：点「DeepSeek 官方」，填写官方 Key；升级时保留已经配置的服务和 Key。
+- **自定义接口**：接口地址和模型均可编辑；支持服务根地址、`/v1` 地址或完整 `/chat/completions` 地址。
+
+Key 仅保存在手机本机。测试会发起真实请求并验证 JSON 返回，不写入账本，也不会把本地规则兜底当作连通成功。
+
+正式升级版本为 **1.4.7（10407）**，基于上游 1.4.5，使用原包名 `com.jingyuniang.vault` 和原发布签名。带 `.debug` 包名的测试包会独立安装，不能用于升级正式版。
+
+## 在线升级
+
+首次手动覆盖安装 1.4.7，此后可在「我的 → 关于 → 检查更新」下载安装新版本，启动后也会每天检查一次。确认后才下载，首次安装时按系统提示允许安装应用。更新服务使用 HTTPS，下载包校验 SHA256、包名、版本及原版签名。公司 AI 默认配置保持不变。
+
+后续打包及服务器发布见 [在线升级部署说明](docs/在线升级.md)。
+
 ## v1.4.5 更新（余额只认一处算法 + 删账户不再丢账）
 
 上一版真机上发现「删掉一个账户，余额凭空变」，根因是账目挂在已删除的账户上、而余额是散在 SQL 里算的。
@@ -361,7 +379,7 @@ app/src/main/java/com/jingyuniang/ledger/
 │   ├── SmsCaptureReceiver.kt
 │   └── CaptureAccessibilityService.kt
 ├── ui/                      Compose 界面（首页/记一笔/图表/计划/我的/管理页/设置页）
-├── ai/DeepSeekClient.kt     DeepSeek 接口（分类 / 一句话记账 / 月报）
+├── ai/DeepSeekClient.kt     OpenAI 兼容接口（分类 / 一句话记账 / 月报）
 ├── ocr/OcrHelper.kt         ML Kit 中文 OCR（截图记账）
 ├── io/                      账单导入、CSV 导出、加密备份
 ├── service/                 悬浮球
@@ -376,7 +394,7 @@ app/src/main/java/com/jingyuniang/ledger/
 ## 六、隐私
 - 账目、抓取到的通知原文、票据照片：**只在本机** SQLite + 私有目录；
 - 没有账号系统、没有上报、没有广告与统计 SDK；
-- 只有你主动点「AI 记账 / AI 点评」时，才会把「商户名 + 通知片段」发到 `api.deepseek.com`，Key 存本机，可随时关；
+- 使用 AI 功能时，相关账目、通知片段或账本摘要会发送到你在「AI 设置」里配置的服务，Key 存本机，可随时关；
 - 备份文件用你自己的密码加密（PBKDF2 12 万次 + AES-GCM），开发者也无法解开。
 
 ---

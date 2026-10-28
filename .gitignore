@@ -19,6 +19,7 @@ keystore/
 *.jks
 *.keystore
 *.p12
+/jingyuniang-collaborator-handover*.zip
 
 # 发布产物（APK 走 dist/ 分发，不进仓库）
 dist/

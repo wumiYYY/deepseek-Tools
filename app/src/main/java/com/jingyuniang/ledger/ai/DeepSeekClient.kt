@@ -3,8 +3,8 @@ package com.jingyuniang.ledger.ai
 import com.jingyuniang.ledger.data.Account
 import com.jingyuniang.ledger.data.Category
 import com.jingyuniang.ledger.data.TxnType
-import com.jingyuniang.ledger.util.AppLog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -15,39 +15,32 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * OpenAI 兼容的聊天客户端（用户自己填 Key，App 内可一键关闭）。
- * 默认指向 DeepSeek 官方；`baseUrl` 可换成任何兼容 `/chat/completions` 的服务
- * （Kimi / 智谱 / 通义 / OpenRouter / 本地 Ollama 都可以）。
+ * OpenAI 兼容客户端，支持 DeepSeek 官方平台及公司 LiteLLM 网关。
  * 只做三件事：智能分类、一句话记账、月度点评。
  */
 class DeepSeekClient(
     private val apiKey: String,
-    private val model: String = "deepseek-chat",
-    baseUrl: String = com.jingyuniang.ledger.data.DEFAULT_API_BASE
+    private val model: String = AiEndpoint.DEFAULT_MODEL,
+    private val baseUrl: String = AiEndpoint.DEFAULT_BASE_URL,
+    private val http: OkHttpClient = defaultHttp
 ) {
 
-    private val endpoint: String =
-        baseUrl.trim().trimEnd('/').ifBlank { com.jingyuniang.ledger.data.DEFAULT_API_BASE } + "/chat/completions"
+    companion object {
+        private val defaultHttp = OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    suspend fun chat(system: String, user: String, jsonMode: Boolean = false, timeoutSec: Long = 0): String? =
+        chatResult(system, user, jsonMode, timeoutSec).getOrNull()
 
-    /**
-     * @param timeoutSec >0 时用一套**短超时**（连接 3s / 读 timeoutSec）发这次请求。
-     *   抓取流水线里调 AI 必须用这个：默认 timeout 是 20s+60s，
-     *   网络差的时候会把「已记账」通知拖到一分钟以后。
-     */
-    suspend fun chat(
-        system: String,
-        user: String,
-        jsonMode: Boolean = false,
-        timeoutSec: Long = 0
-    ): String? =
+    /** 测试连接也走同一请求路径，但保留失败原因，且不使用本地解析兜底。 */
+    suspend fun chatResult(system: String, user: String, jsonMode: Boolean = false, timeoutSec: Long = 0): Result<String> =
         withContext(Dispatchers.IO) {
-            if (apiKey.isBlank()) return@withContext null
             runCatching {
+                require(apiKey.isNotBlank()) { "请填写 API Key" }
+                require(model.isNotBlank()) { "请填写模型名称" }
                 val body = JSONObject().apply {
                     put("model", model)
                     put("temperature", 0.2)
@@ -61,7 +54,7 @@ class DeepSeekClient(
                     )
                 }
                 val req = Request.Builder()
-                    .url(endpoint)
+                    .url(AiEndpoint.chatUrl(baseUrl))
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
                     .post(body.toString().toRequestBody("application/json".toMediaType()))
@@ -76,13 +69,20 @@ class DeepSeekClient(
                 client.newCall(req).execute().use { resp ->
                     val text = resp.body?.string().orEmpty()
                     if (!resp.isSuccessful) {
-                        AppLog.w("DeepSeek 请求失败 ${resp.code}: ${text.take(200)}")
-                        return@use null
+                        // 网关错误正文可能含敏感信息，不写入日志或直接展示。
+                        error(when (resp.code) {
+                            401, 403 -> "认证失败（HTTP ${resp.code}），请检查 Key 和模型权限"
+                            404 -> "接口或模型不存在（HTTP 404），请检查接口地址和模型名称"
+                            429 -> "请求受限（HTTP 429），请稍后重试或联系管理员"
+                            else -> "AI 服务请求失败（HTTP ${resp.code}）"
+                        })
                     }
-                    JSONObject(text).optJSONArray("choices")
+                    val content = JSONObject(text).optJSONArray("choices")
                         ?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
+                    check(!content.isNullOrBlank()) { "AI 服务未返回有效内容，请检查模型配置" }
+                    content
                 }
-            }.getOrNull()
+            }.onFailure { if (it is CancellationException) throw it }
         }
 }
 
