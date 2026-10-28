@@ -4,6 +4,8 @@
 .toolchain/
 .gradle/
 .kotlin/
+__pycache__/
+*.pyc
 build/
 app/build/
 captures/

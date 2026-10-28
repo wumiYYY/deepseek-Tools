@@ -86,6 +86,23 @@ if ($GuideOnly) {
     exit 0
 }
 
+# 在跑测试/构建之前提示交接缺项，避免拿到没有在线更新凭据的正式包。
+$updateToken = $env:WHALE_UPDATE_TOKEN
+if ([string]::IsNullOrWhiteSpace($updateToken)) {
+    $propsPath = Join-Path $root "local.properties"
+    if (Test-Path -LiteralPath $propsPath) {
+        $tokenLine = Get-Content -LiteralPath $propsPath -Encoding UTF8 |
+            Where-Object { $_ -match '^\s*WHALE_UPDATE_TOKEN\s*=' } | Select-Object -Last 1
+        if ($tokenLine) { $updateToken = ($tokenLine -split '=', 2)[1].Trim() }
+    }
+}
+if ($updateToken -cnotmatch '^[a-f0-9]{64}$') {
+    Write-Output "❌ 缺少有效的 WHALE_UPDATE_TOKEN。先导入所有者的私密发布交接包："
+    Write-Output "  python scripts/publishing-config.py import --bundle <交接包.zip>"
+    Write-Output "沿用现有 token，不要重新生成，否则 1.4.7 老用户无法访问更新。"
+    exit 1
+}
+
 # ---- 3. 单测 / 构建 ----
 function Invoke-Gradle([string]$task) {
     $out = & (Join-Path $root "scripts\build.ps1") -Task $task 2>&1

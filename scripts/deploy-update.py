@@ -37,7 +37,7 @@ def verify_https(host, token, manifest):
     print("HTTPS manifest and complete APK download verified against the local release.")
 
 
-def deploy_openssh(args, root, token, manifest_path, apk, manifest):
+def openssh_options(root):
     if not shutil.which("ssh"):
         raise RuntimeError("OpenSSH ssh is required; alternatively use --transport paramiko")
     known = root / ".toolchain/update_known_hosts"
@@ -49,6 +49,27 @@ def deploy_openssh(args, root, token, manifest_path, apk, manifest):
         relay = subprocess.list2cmdline([sys.executable, str(root / "scripts/ssh-proxy.py"), "%h", "%p"])
         options += ["-o", "ProxyCommand=" + relay]
         print("SSH will use the configured desktop network proxy.", flush=True)
+    return options
+
+
+def check_publishing(args, root, token):
+    headers = {"X-Whale-Update-Token": token, "Cache-Control": "no-cache"}
+    request = urllib.request.Request(f"https://{args.host}/whale-vault/update.json", headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
+        manifest = json.load(response)
+    print("HTTPS update access verified; current server version: " + manifest["versionName"], flush=True)
+    command = ("set -e; command -v python3 >/dev/null; sudo -n true; "
+               "sudo -n test -w /var/www/whale-vault; "
+               "sudo -n test -r /etc/nginx/snippets/whale-vault.conf; "
+               "sudo -n nginx -t; printf 'SSH and deployment permissions verified.\\n'")
+    result = subprocess.run(["ssh", "-T", *openssh_options(root), f"{args.username}@{args.host}", command])
+    if result.returncode:
+        raise RuntimeError("SSH login or sudo/update directory check failed; configure your own SSH identity or enter the server password")
+    print("Read-only publishing check passed. No release files or nginx configuration changed.", flush=True)
+
+
+def deploy_openssh(args, root, token, manifest_path, apk, manifest):
+    options = openssh_options(root)
     target = f"{args.username}@{args.host}"
     identity = uuid.uuid4().hex
     stage = f"/home/{args.username}/.cache/whale-vault-upload/{identity}"
@@ -110,13 +131,18 @@ def main():
     parser.add_argument("--publish-dir", type=Path, default=Path("dist/publish/whale-vault"))
     parser.add_argument("--configure-nginx", action="store_true", help="Install the isolated update location in the existing HTTPS IP site")
     parser.add_argument("--transport", choices=("openssh", "paramiko"), default="openssh")
+    parser.add_argument("--check", action="store_true", help="Read-only check of existing token, HTTPS, SSH and deployment permissions; no APK required")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    props = (root / "local.properties").read_text(encoding="utf-8-sig")
-    match = re.search(r"^WHALE_UPDATE_TOKEN=([a-f0-9]{64})\s*$", props, re.M)
+    props_path = root / "local.properties"
+    props = props_path.read_text(encoding="utf-8-sig") if props_path.exists() else ""
+    match = re.search(r"^\s*WHALE_UPDATE_TOKEN\s*=\s*([a-f0-9]{64})\s*$", props, re.M)
     token = os.environ.get("WHALE_UPDATE_TOKEN") or (match[1] if match else "")
     if not re.fullmatch(r"[a-f0-9]{64}", token):
-        raise RuntimeError("WHALE_UPDATE_TOKEN is missing from local.properties")
+        raise RuntimeError("WHALE_UPDATE_TOKEN is missing/invalid; import the owner's private publishing bundle with scripts/publishing-config.py import --bundle <zip>. Do not generate a new token.")
+    if args.check:
+        check_publishing(args, root, token)
+        return
     directory = args.publish_dir.resolve()
     manifest_path = directory / "update.json"
     manifest = json.loads(manifest_path.read_bytes())
