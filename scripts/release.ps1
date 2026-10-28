@@ -2,6 +2,8 @@
     [switch]$SkipTests,
     [switch]$GuideOnly,
     [switch]$Install,
+    [switch]$PrepareUpdate,
+    [string]$UpdateNotes = "",
     [string]$Serial = "bd7a85e9"
 )
 # 鲸鱼娘金库 · 发布一条龙：单测 → 构建 → dist/<版本>/APK + SHA256 + 使用说明 →（可选）装机
@@ -11,7 +13,7 @@
 #   .\scripts\release.ps1 -Install -Serial bd7a85e9
 #   .\scripts\release.ps1 -GuideOnly           # 只重新生成 dist 里的「使用说明」，不重打包（sha 不变）
 $ErrorActionPreference = "Continue"
-$root = "D:\Tools\deepseek_build_Tools\everyday_money"
+$root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 # ---- 1. 从 build.gradle.kts 读版本号（versionCode 由它派生，别在这里另写一份）----
@@ -110,7 +112,26 @@ if ((Invoke-Gradle "assembleRelease") -ne 0) {
 # ---- 4. 产物落到 dist/<版本>/ ----
 $src = Join-Path $root "app\build\outputs\apk\release\app-release.apk"
 if (-not (Test-Path $src)) {
-    Write-Output "❌ 没找到 $src"
+    Write-Output "❌ 没找到已签名的正式安装包。请检查原版 keystore 和 local.properties 中的 WHALE_* 签名配置。"
+    exit 1
+}
+# 正式发布必须与旧版使用同一身份，防止再次分发独立测试包或不同签名的安装包。
+$env:JAVA_HOME = Join-Path $root ".toolchain\jdk17"
+$buildTools = Join-Path $root ".toolchain\android-sdk\build-tools\35.0.0"
+$certOutput = & (Join-Path $buildTools "apksigner.bat") verify --print-certs $src 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Output "❌ APK 签名验证失败，停止发布。"
+    exit 1
+}
+$expectedCert = "e7962e34c241992bb69d781a6451390871bce3c26fb67a9b45dcac0558ef1975"
+if (("$certOutput" -replace ':', '') -notmatch $expectedCert) {
+    Write-Output "❌ APK 签名与原版不一致，无法覆盖升级，停止发布。请使用原版 keystore。"
+    exit 1
+}
+$packageOutput = & (Join-Path $buildTools "aapt.exe") dump badging $src 2>&1
+if ($LASTEXITCODE -ne 0 -or !("$packageOutput".Contains("name='com.jingyuniang.vault'")) -or
+    !("$packageOutput".Contains("versionCode='$versionCode'"))) {
+    Write-Output "❌ 包名或版本号不符合正式升级要求，停止发布。"
     exit 1
 }
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -124,6 +145,18 @@ $sizeMB = [math]::Round((Get-Item $apkOut).Length / 1MB, 2)
 "v$versionName ($versionCode)  $apkName  ${sizeMB}MB  $hash" | Set-Content -Path (Join-Path $distDir "VERSION.txt") -Encoding UTF8
 Sync-DistGuide
 Sync-DistZip
+
+if ($PrepareUpdate) {
+    try {
+        & (Join-Path $root "scripts\make-update-json.ps1") -Version $versionName `
+            -PublishDir (Join-Path $root "dist\publish\whale-vault") `
+            -BaseUrl "https://161.118.233.45/whale-vault" -Notes $UpdateNotes
+        if (-not $?) { throw "更新清单生成失败" }
+    } catch {
+        Write-Output "❌ 更新清单生成失败：$($_.Exception.Message)"
+        exit 1
+    }
+}
 
 Write-Output ""
 Write-Output "=== 产物 ==="

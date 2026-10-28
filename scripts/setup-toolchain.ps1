@@ -3,7 +3,7 @@
 # 幂等：已下载/已解压的会跳过（可反复重跑）
 $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
-$root = "D:\Tools\deepseek_build_Tools\everyday_money"
+$root = Split-Path -Parent $PSScriptRoot
 $tc = Join-Path $root ".toolchain"
 New-Item -ItemType Directory -Force -Path $tc | Out-Null
 

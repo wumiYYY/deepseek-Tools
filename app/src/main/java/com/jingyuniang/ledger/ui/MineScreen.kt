@@ -167,7 +167,7 @@ fun MineScreen(
             WhaleCard(modifier = Modifier.padding(horizontal = 14.dp)) {
                 SettingRow(
                     "🫧", "金库管家 · 对话问账",
-                    if (settings.apiKey.isBlank()) "没填 Key 也能问基础账目" else "已接入 DeepSeek，问真实数据",
+                    if (!settings.aiEnabled || settings.apiKey.isBlank()) "本地规则也能问基础账目" else "已接入 AI，问真实数据",
                     onClick = onOpenAiChat
                 )
                 RowDivider()

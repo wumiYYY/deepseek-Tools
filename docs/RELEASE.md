@@ -20,6 +20,8 @@
 
 ## 1. 版本号规则
 
+当前升级目标为 **1.4.7（10407）**，正式包名仍为 `com.jingyuniang.vault`。发布脚本会核对包名、版本号及原发布证书指纹；缺少原签名时无法生成可覆盖升级的安装包。`.debug` 测试包会独立安装，不能用于正式升级。
+
 只改一个地方：`app/build.gradle.kts` 里的 `versionNameValue`。
 
 ```kotlin
@@ -119,7 +121,7 @@ whale-vault/1.2.1/
 > 校验只对照**当次 `dist/<版本>/SHA256SUMS.txt`**，别拿上一次构建的 hash 去比对。
 > 只改文档、不想动 APK/hash 时用 `.\scripts\release.ps1 -GuideOnly`（只重新生成使用说明）。
 
-### 4.2 将来加「检查更新」（预留格式，尚未实现）
+### 4.2 在线更新（1.4.7 起已实现）
 
 ```json
 // https://<你的静态目录>/whale-vault/update.json
@@ -132,13 +134,14 @@ whale-vault/1.2.1/
 }
 ```
 
-实现要点（做的时候照这个来）：
+实现与发布：
 
-- 关于页加「检查更新」→ GET `update.json` → 比 `BuildConfig.VERSION_CODE`
-- 下载到 `cacheDir` → **先校验 sha256** → `FileProvider` 拿 uri → `ACTION_VIEW` + `application/vnd.android.package-archive` 拉起系统安装器
-- `AndroidManifest.xml` 需要 `<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />`
-- `res/xml/file_paths.xml` 加 `<cache-path>` 段
-- 失败要能降级：网络失败只提示「检查失败」，不影响手动安装
+- 启动后每天检查一次；关于页手动检查始终可用。仅版本号更高时提示，用户确认后才下载。
+- HTTPS + 独立更新访问凭证；拒绝重定向，不把凭证发往其他站点。
+- 下载到缓存目录，校验 SHA256、长度，再用 PackageManager 校验包名、版本、原版及当前已装应用的签名。
+- 首次引导授权安装权限，返回后继续用 FileProvider 拉起系统安装器。
+- 网络失败不影响记账与手动安装；支持下载重试，不强制更新。
+- `.\scripts\release.ps1 -PrepareUpdate -UpdateNotes "更新说明"` 生成 APK 和静态清单，随后运行 `python scripts/deploy-update.py` 上传。首次部署加 `--configure-nginx`。详见 [在线升级](在线升级.md)。
 
 ---
 

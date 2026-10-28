@@ -1,4 +1,4 @@
-﻿import java.util.Properties
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -10,7 +10,7 @@ plugins {
 // ---- 版本号：只改 versionName，versionCode 自动派生（规则见下），避免手改漏改 ----
 // versionCode = major*10000 + minor*100 + patch，例如 1.2.0 → 10200。**只增不减**，
 // 覆盖安装（小米/HyperOS 等）要求 versionCode >= 已装版本。
-val versionNameValue = "1.4.5"
+val versionNameValue = "1.4.7"
 val versionCodeValue = versionNameValue.split(".").let { parts ->
     val major = parts.getOrNull(0)?.toIntOrNull() ?: 1
     val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -40,6 +40,12 @@ android {
         targetSdk = 35
         versionCode = versionCodeValue
         versionName = versionNameValue
+        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://161.118.233.45/whale-vault/update.json\"")
+        val updateToken = signingValue("WHALE_UPDATE_TOKEN", "WHALE_UPDATE_TOKEN").orEmpty()
+        require(updateToken.isEmpty() || updateToken.matches(Regex("[a-f0-9]{64}"))) {
+            "WHALE_UPDATE_TOKEN must be a 64-character lowercase hexadecimal token"
+        }
+        buildConfigField("String", "UPDATE_TOKEN", "\"$updateToken\"")
         vectorDrawables { useSupportLibrary = true }
         ksp { arg("room.schemaLocation", "$projectDir/schemas") }
         // ML Kit 中文 OCR 的模型打在 .so 里，默认会为 4 个 ABI 各打一份（x86/x86_64 共 22MB，
@@ -133,6 +139,6 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
-    // JVM 单测里 android.jar 的 org.json 是空实现，需要真实实现才能测规则 JSON
-    testImplementation("org.json:json:20231013")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.json:json:20240303")
 }

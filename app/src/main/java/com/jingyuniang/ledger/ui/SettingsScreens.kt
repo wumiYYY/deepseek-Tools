@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jingyuniang.ledger.BuildConfig
 import com.jingyuniang.ledger.Permissions
+import com.jingyuniang.ledger.ai.AiEndpoint
 import com.jingyuniang.ledger.data.Txn
 import com.jingyuniang.ledger.io.BackupManager
 import com.jingyuniang.ledger.util.Fmt
@@ -57,45 +59,19 @@ private fun ScreenColumn(title: String, onBack: () -> Unit, content: @Composable
 @Composable
 fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val p = WhaleTheme.palette
-    val ctx = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     var key by remember { mutableStateOf(settings.apiKey) }
+    var baseUrl by remember { mutableStateOf(settings.apiBase) }
     var model by remember { mutableStateOf(settings.model) }
-    var apiBase by remember { mutableStateOf(settings.apiBase) }
     var hint by remember { mutableStateOf("") }
-    var autoSnapNote by remember { mutableStateOf("") }
-    var ruleInfo by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-    // 导出/导入识别规则（P1-4：490 条规则交给用户自己改）
-    val exportRulesLauncher = rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                val json = com.jingyuniang.ledger.capture.RuleStore
-                    .exportJson(com.jingyuniang.ledger.capture.RuleStore.current)
-                ctx.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-                ruleInfo = "已导出（${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条规则）"
-            }.onFailure { ruleInfo = "导出失败：${it.message}" }
-        }
-    }
-    val importRulesLauncher = rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (bytes == null) {
-                    ruleInfo = "读不到这个文件"
-                } else {
-                    val err = com.jingyuniang.ledger.capture.RuleStore.importFrom(ctx, bytes)
-                    ruleInfo = if (err == null) {
-                        "导入成功：${com.jingyuniang.ledger.capture.RuleStore.current.totalEntries} 条，已立即生效"
-                    } else {
-                        "导入失败：$err（现有规则未变）"
-                    }
-                }
-            }.onFailure { ruleInfo = "导入失败：${it.message}" }
+    var testing by remember { mutableStateOf(false) }
+    var edited by remember { mutableStateOf(false) }
+
+    LaunchedEffect(settings.apiKey, settings.apiBase, settings.model) {
+        if (!edited) {
+            key = settings.apiKey
+            baseUrl = settings.apiBase
+            model = settings.model
         }
     }
 
@@ -104,12 +80,11 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             Text("🐳 鲸鱼娘的大脑", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Text(
-                "填一个 **OpenAI 兼容** 接口的 Key 就能用：\n" +
+                "默认使用公司 AI，也支持 DeepSeek 官方及其他 OpenAI 兼容接口。配置后就能用：\n" +
                     "· 一句话记账（「昨天午饭 25 微信」）\n" +
                     "· 通知账单智能分类\n" +
                     "· 每月消费点评（鲸鱼娘月报）\n\n" +
-                    "默认 DeepSeek 官方；也可以换成 Kimi / 智谱 / 通义 / OpenRouter / 本地 Ollama（改下面的「接口地址」即可）。\n" +
-                    "不填也能用 —— 所有识别都会退回本地规则，完全离线。Key 只存在本机。",
+                    "不填也能用本地规则。Key 只存在本机，AI 请求发送到你配置的接口地址。",
                 color = p.sub, fontSize = 11.sp, lineHeight = 18.sp
             )
         }
@@ -120,30 +95,54 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     Text("启用 AI 能力", color = p.text, fontSize = 13.sp)
                     Text("关闭后不产生任何 API 请求", color = p.sub, fontSize = 10.sp)
                 }
-                Switch(checked = settings.aiEnabled, onCheckedChange = { vm.setAiEnabled(it) })
+                Switch(checked = settings.aiEnabled, onCheckedChange = { vm.setAiEnabled(it) }, enabled = !testing)
             }
             Spacer(Modifier.height(10.dp))
+            Text("快捷配置（切换后请填写对应的 Key）", color = p.sub, fontSize = 11.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = AiEndpoint.sameService(baseUrl, AiEndpoint.SOUTHCHIP_BASE_URL), enabled = !testing, onClick = {
+                    edited = true
+                    if (!AiEndpoint.sameService(baseUrl, AiEndpoint.SOUTHCHIP_BASE_URL)) key = ""
+                    baseUrl = AiEndpoint.SOUTHCHIP_BASE_URL
+                    model = AiEndpoint.SOUTHCHIP_MODEL
+                    hint = "已选择公司 AI，请填写 Key 后保存"
+                }, label = { Text("公司 AI") })
+                FilterChip(selected = AiEndpoint.sameService(baseUrl, AiEndpoint.DEEPSEEK_BASE_URL), enabled = !testing, onClick = {
+                    edited = true
+                    if (!AiEndpoint.sameService(baseUrl, AiEndpoint.DEEPSEEK_BASE_URL)) key = ""
+                    baseUrl = AiEndpoint.DEEPSEEK_BASE_URL
+                    model = AiEndpoint.DEEPSEEK_MODEL
+                    hint = "已选择 DeepSeek 官方，请填写 Key 后保存"
+                }, label = { Text("DeepSeek 官方") })
+            }
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { edited = true; baseUrl = it; hint = "" },
+                label = { Text("接口地址（Base URL）") },
+                supportingText = { Text("公司：https://litellm.southchips.net") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !testing,
+                singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = key,
-                onValueChange = { key = it },
+                onValueChange = { edited = true; key = it; hint = "" },
                 label = { Text("API Key") },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !testing,
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation()
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = apiBase,
-                onValueChange = { apiBase = it },
-                label = { Text("接口地址（OpenAI 兼容）") },
-                placeholder = { Text("https://api.deepseek.com") },
-                singleLine = true
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
                 value = model,
-                onValueChange = { model = it },
-                label = { Text("模型名") },
-                placeholder = { Text("deepseek-chat / deepseek-reasoner") },
+                onValueChange = { edited = true; model = it; hint = "" },
+                label = { Text("模型名称") },
+                supportingText = { Text("公司：sc-deepseek-flash；官方：deepseek-chat") },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !testing,
                 singleLine = true
             )
             Spacer(Modifier.height(10.dp))
@@ -153,39 +152,17 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                         .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(p.primary)
-                        .clickable {
-                            vm.setApiKey(key.trim())
-                            vm.setApiBase(apiBase.trim().ifBlank { com.jingyuniang.ledger.data.DEFAULT_API_BASE })
-                            vm.setModel(model.trim().ifBlank { "deepseek-chat" })
-                            vm.setAiEnabled(true)
-                            hint = "已保存，正在测试…"
-                            vm.aiParse("测试 12 元", onResult = { r ->
-                                hint = if (r != null) "连通成功 ✅ 解析出 ${Fmt.money(r.amountCents)}（${r.reason}）"
-                                else "已保存，但解析失败，检查 Key 或网络"
-                            }, onError = { hint = "已保存。$it" })
-                        }
-                        .padding(vertical = 11.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("保存并测试", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp) }
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(p.surfaceAlt)
-                        .clickable {
-                            runCatching {
-                                ctx.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://platform.deepseek.com/api_keys")
-                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
+                        .clickable(enabled = !testing) {
+                            testing = true
+                            hint = "正在保存并测试…"
+                            vm.saveAndTestAi(baseUrl, key, model) {
+                                hint = it
+                                testing = false
                             }
                         }
                         .padding(vertical = 11.dp),
                     contentAlignment = Alignment.Center
-                ) { Text("去申请 Key", color = p.primary, fontSize = 13.sp) }
+                ) { Text(if (testing) "测试中…" else "保存并测试", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp) }
             }
             if (hint.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
@@ -197,7 +174,7 @@ fun AiSettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             Text("费用说明", color = p.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(4.dp))
             Text(
-                "deepseek-chat 按 token 计费，日常记账用量很小（一次分类约几百 token）。所有 AI 功能都能在「我的」里一键关闭。",
+                "费用、额度及模型权限以所选服务的规则为准。公司 AI 需要手机能访问公司网关。所有 AI 功能都能在「我的」里一键关闭。",
                 color = p.sub, fontSize = 11.sp, lineHeight = 17.sp
             )
         }
@@ -619,9 +596,17 @@ private fun StepRow(num: String, title: String, desc: String, ok: Boolean, onAct
 
 // ================= 关于 =================
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen(onBack: () -> Unit, onCheckUpdate: () -> Unit = {}) {
     val p = WhaleTheme.palette
     ScreenColumn("关于鲸鱼娘", onBack) {
+        WhaleCard {
+            Text("当前版本 v${BuildConfig.VERSION_NAME}", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text("启动后每天检查一次新版本，确认后才下载更新。", color = p.sub, fontSize = 11.sp)
+            Spacer(Modifier.height(10.dp))
+            ActionButton("检查更新", onClick = onCheckUpdate)
+        }
+        Spacer(Modifier.height(10.dp))
         WhaleCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -651,7 +636,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Text(
                 "· 账目、通知原文、票据照片全部存在本机 SQLite / 私有目录；\n" +
                     "· 没有账号系统，不上传服务器，没有广告 SDK，没有埋点；\n" +
-                    "· 只有你主动使用 AI 功能时，才会把「商户名 + 通知片段」发到 DeepSeek；\n" +
+                    "· 使用 AI 功能时，相关账目、通知片段或账本摘要会发到你在 AI 设置中配置的服务；\n" +
                     "· 备份文件由你的密码加密，连开发者也无法解开。",
                 color = p.sub, fontSize = 11.sp, lineHeight = 18.sp
             )

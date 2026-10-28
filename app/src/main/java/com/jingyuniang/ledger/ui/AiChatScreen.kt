@@ -114,7 +114,7 @@ fun AiChatScreen(vm: AppViewModel, onBack: () -> Unit) {
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (settings.apiKey.isNotBlank()) "有 DeepSeek 加持，问什么都能帮你算"
+                            if (settings.aiEnabled && settings.apiKey.isNotBlank()) "已接入 AI，帮你分析真实账目"
                             else "没填 API Key 也能问基础账目（本地规则回答）",
                             color = p.sub, fontSize = 11.sp
                         )
@@ -312,7 +312,7 @@ fun QuickAiDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                 Column {
                     Text("跟鲸鱼娘说一句", color = p.text, fontSize = 15.sp, fontFamily = WhaleSerif, fontWeight = FontWeight.Bold)
                     Text(
-                        if (settings.apiKey.isNotBlank()) "AI 解析，直接落账" else "本地规则解析，直接落账",
+                        if (settings.aiEnabled && settings.apiKey.isNotBlank()) "AI 解析，直接落账" else "本地规则解析，直接落账",
                         color = p.sub, fontSize = 10.sp
                     )
                 }
